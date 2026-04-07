@@ -1032,6 +1032,11 @@ document.addEventListener('alpine:init', () => {
         }
     },
 
+    openCreateTableModal() {
+      this.newTableName = '';
+      this.newTableFields = [{ name: '', type: 'string' }];
+      document.getElementById('create-table-modal')?.showModal();
+    },
     // ── Edit schema ──
     async openEditSchemaModal() {
       if (!this.selectedTable) return;
