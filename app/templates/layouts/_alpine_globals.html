@@ -1,0 +1,180 @@
+{% macro alpine_store() %}
+<!-- Toastify -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css" />
+<script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+
+<script>
+// ---------------------------------------------------------------------------
+// toast(message, type)
+// ---------------------------------------------------------------------------
+function toast(message, type = "primary") {
+    const backgrounds = {
+        primary: "#4d5d49",
+        success: "linear-gradient(135deg, #22c55e, #16a34a)",
+        error:   "linear-gradient(135deg, #ef4444, #dc2626)",
+        warning: "linear-gradient(135deg, #f59e0b, #d97706)",
+        info:    "linear-gradient(135deg, #3b82f6, #2563eb)",
+    };
+    Toastify({
+        text: message,
+        duration: 5000,
+        gravity: "bottom",
+        position: "right",
+        escapeMarkup: false,
+        style: {
+            background: backgrounds[type] ?? backgrounds.primary,
+            borderRadius: "0.5rem",
+            color: "#ffffff"
+        },
+    }).showToast();
+}
+
+// ---------------------------------------------------------------------------
+// request(method, url, onSuccess, onError, jsonData)
+// ---------------------------------------------------------------------------
+function request(method, url, onSuccess, onError, jsonData = null) {
+    const options = {
+        method,
+        headers: { "Content-Type": "application/json; charset=utf-8" },
+    };
+    if (jsonData !== null) {
+        options.body = JSON.stringify(jsonData);
+    }
+    fetch(url, options)
+        .then(res => {
+            if (res.ok) return res.json();
+            return res.json().then(err => { throw new Error(err.message || "Request failed") });
+        })
+        .then(data => onSuccess(data))
+        .catch(err => {
+            if (typeof onError === 'function') {
+                if (err.toString().includes("not valid JSON")) {
+                    toast("Unexpected error occurred.", "error");
+                    console.error(err);
+                } else {
+                    onError(err);
+                }
+            } else {
+                toast("Error: " + err.message, "error");
+            }
+        });
+}
+
+// ---------------------------------------------------------------------------
+// Alpine store
+// ---------------------------------------------------------------------------
+document.addEventListener('alpine:init', () => {
+    Alpine.store('app', {
+
+        // ── state (seeded from Flask session at render time — no API calls) ──
+        isAuthenticated: {{ current_user.is_authenticated | tojson }},
+        tenantId:       {{ session.get('tenant_id',    'null') | tojson }},
+        tenantName:     {{ session.get('tenant_name',  'null') | tojson }},
+        selectedTenant: null,
+        tenants:        {{ session.get('tenants', []) | tojson }},
+        user: {
+            id:    {{ session.get('user_id',    'null') | tojson }},
+            email: {{ session.get('user_email', 'null') | tojson }},
+            super: {{ session.get('user_super', False)  | tojson }},
+        },
+        roles: {{ session.get('tenant_roles', []) | tojson }},
+
+        // ── derived helpers ──────────────────────────────────────────────
+        get isAdmin()  { return this.roles.includes('admin')  },
+        get isEditor() { return this.roles.includes('editor') },
+        get isViewer() { return this.roles.includes('viewer') },
+        hasRole(name)  { return this.roles.includes(name)     },
+        hasMinRole(minimum) {
+            const hierarchy = ['user', 'viewer', 'editor', 'admin']
+            const minIndex = hierarchy.indexOf(minimum)
+            if (minIndex === -1) return false
+            return this.user.super || this.roles.some(r => hierarchy.indexOf(r) >= minIndex)
+        },
+        // ── boot ─────────────────────────────────────────────────────────
+        async init() {
+            if (!this.isAuthenticated) {
+                console.log("Not authenticated, skipping init")
+                return
+            }
+
+            localStorage.removeItem('selectedTenantId')
+            localStorage.removeItem('selectedTenant')
+
+            if (!this.tenants.length) {
+                await this._loadTenants()
+            }
+
+            if (this.tenantId && this.tenants.length) {
+                const match = this.tenants.find(t => t.id === this.tenantId)
+                this.selectedTenant = match ?? this.tenants[0] ?? null
+            }
+
+            // Auto-select first tenant if none is set
+            if (!this.tenantId && this.tenants.length) {
+                await this.changeTenant(this.tenants[0])
+                return // changeTenant reloads the page
+            }
+        },
+
+        // ── public actions ───────────────────────────────────────────────
+
+        /** Switch tenant — updates server session then reloads. */
+        async changeTenant(tenantOrId) {
+            const tenant = typeof tenantOrId === 'object'
+                ? tenantOrId
+                : this.tenants.find(t => t.id === tenantOrId)
+
+            if (!tenant) { toast('Tenant not found', 'error'); return }
+
+            toast(`Switching to ${tenant.name}…`, 'info')
+            try {
+                const res = await fetch(`/api/session/${tenant.id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                })
+                if (!res.ok) throw new Error()
+                // Reload so Jinja re-renders store with fresh session values
+                window.location.reload()
+            } catch {
+                toast('Failed to switch tenant', 'error')
+            }
+        },
+
+        /** Re-fetch roles from server and update local state without a full reload. */
+        async refreshSession() {
+            try {
+                const res = await fetch('/api/session/refresh', { method: 'POST' })
+                if (!res.ok) throw new Error()
+                const data = await res.json()
+                this.user  = { id: data.user_id, email: data.user_email, super: data.user_super }
+                this.roles = data.tenant_roles ?? []
+                toast('Session refreshed')
+            } catch {
+                toast('Could not refresh session', 'error')
+            }
+        },
+
+        async logout() {
+            localStorage.clear()
+            await fetch('/logout', { method: 'POST' })
+            window.location.href = '/login'
+        },
+
+        // ── private helpers ──────────────────────────────────────────────
+
+        /** Fetch tenant list from API. No localStorage caching — avoids stale data loops. */
+        async _loadTenants() {
+            if (!this.user?.id) { this.tenants = []; return }
+            try {
+                const res = await fetch(`/api/users/${this.user.id}/tenants`)
+                if (!res.ok) throw new Error()
+                this.tenants = await res.json()
+            } catch {
+                console.log('Unable to load tenants')
+                this.tenants = []
+            }
+        },
+    })
+})
+</script>
+{% endmacro %}

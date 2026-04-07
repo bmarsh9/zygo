@@ -1,0 +1,360 @@
+{% extends "layouts/base.html" %}
+
+{% block page_header %}{% endblock %}
+{% block page_content %}
+<div x-data="table()">
+    <div class="flex items-center justify-between py-4">
+        <h1 class="text-xl font-semibold" x-text="system ? 'System Logs' : 'Tenant Logs'"></h1>
+    </div>
+    <!-- Search + controls -->
+    <div class="flex items-center justify-between gap-3 mb-3">
+        <label class="input input-sm input-bordered flex items-center gap-2 w-72">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 opacity-50" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+            </svg>
+            <input type="text" x-model="search" placeholder="Search logs…" class="grow" />
+        </label>
+        <div class="flex items-center gap-2">
+            <span class="text-xs opacity-40" x-text="filteredItems.length + ' logs'"></span>
+            <button @click="getItems()" class="btn btn-sm btn-ghost border border-base-300 tooltip" data-tip="Refresh">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/>
+                </svg>
+            </button>
+            <button @click="exportCSV()" class="btn btn-sm btn-ghost border border-base-300 tooltip" data-tip="Export CSV">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/>
+                </svg>
+            </button>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="flex items-center gap-2 mb-3 flex-wrap">
+        <select x-model="filterLevel" @change="page = 1" class="select select-xs select-bordered">
+            <option value="">All levels</option>
+            <option value="INFO">Info</option>
+            <option value="WARNING">Warning</option>
+            <option value="ERROR">Error</option>
+            <option value="DEBUG">Debug</option>
+        </select>
+        <select x-model="filterAction" @change="page = 1" class="select select-xs select-bordered">
+            <option value="">All actions</option>
+            <option value="POST">POST</option>
+            <option value="PUT">PUT</option>
+            <option value="DELETE">DELETE</option>
+        </select>
+        <select x-model="filterSuccess" @change="page = 1" class="select select-xs select-bordered">
+            <option value="">All results</option>
+            <option value="true">Success</option>
+            <option value="false">Failed</option>
+        </select>
+
+        <!-- Tenant filter — only visible in system mode -->
+        <select x-show="system" x-model="filterTenant" @change="page = 1" class="select select-xs select-bordered">
+            <option value="">All tenants</option>
+            <template x-for="[id, name] in tenantOptions" :key="id">
+                <option :value="id" x-text="name"></option>
+            </template>
+        </select>
+
+        <button
+            x-show="filterLevel || filterAction || filterSuccess || filterTenant"
+            @click="filterLevel = ''; filterAction = ''; filterSuccess = ''; filterTenant = ''; page = 1"
+            class="btn btn-xs btn-ghost opacity-50 hover:opacity-100">
+            Clear filters
+        </button>
+    </div>
+
+    <!-- Table -->
+    <div class="card bg-base-100 border border-base-300 overflow-hidden">
+
+        <!-- Loading -->
+        <div x-show="loading" class="flex items-center justify-center py-16">
+            <span class="loading loading-dots loading-md text-primary"></span>
+        </div>
+
+        <!-- Empty -->
+        <div x-show="!loading && filteredItems.length === 0" class="text-center py-16 opacity-30 text-sm">
+            No logs found
+        </div>
+
+        <div x-show="!loading && filteredItems.length > 0">
+            <table class="table table-sm w-full">
+                <thead class="bg-base-200 text-xs uppercase tracking-wide">
+                    <tr>
+                        <th class="hidden sm:table-cell w-20">Level</th>
+                        <th class="w-20">Action</th>
+                        <th class="hidden md:table-cell w-24">Namespace</th>
+                        <th>Message</th>
+                        <th class="hidden md:table-cell">Email</th>
+                        <th class="hidden sm:table-cell w-16">Status</th>
+                        <th x-show="system" class="hidden md:table-cell">Tenant</th>
+                        <th @click="setSort('date_added')" class="cursor-pointer select-none hidden lg:table-cell w-32">
+                            <div class="flex items-center gap-1">
+                                Date
+                                <span x-show="sortField === 'date_added'" x-text="sortAsc ? '↑' : '↓'" class="opacity-50"></span>
+                            </div>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="log in pagedItems" :key="log.id">
+                        <tr class="hover:bg-base-200/50 transition-colors cursor-pointer" @click="openModal(log)">
+                            <td class="hidden sm:table-cell">
+                                <span
+                                    class="text-xs font-medium px-2 py-0.5 rounded-full"
+                                    :class="{
+                                        'bg-info/10 text-info':       log.level === 'INFO',
+                                        'bg-warning/10 text-warning': log.level === 'WARNING',
+                                        'bg-error/10 text-error':     log.level === 'ERROR',
+                                        'bg-base-200 opacity-50':     log.level === 'DEBUG',
+                                    }"
+                                    x-text="log.level">
+                                </span>
+                            </td>
+                            <td>
+                                <span
+                                    class="text-xs font-mono px-2 py-0.5 rounded-full"
+                                    :class="{
+                                        'bg-success/10 text-success': log.action === 'POST',
+                                        'bg-warning/10 text-warning': log.action === 'PUT' || log.action === 'PATCH',
+                                        'bg-error/10 text-error':     log.action === 'DELETE',
+                                        'bg-base-200 opacity-60':     log.action === 'GET' || log.action === 'SYSTEM',
+                                    }"
+                                    x-text="log.action">
+                                </span>
+                            </td>
+                            <td class="hidden md:table-cell">
+                                <span class="text-xs opacity-50" x-text="log.namespace"></span>
+                            </td>
+                            <td>
+                                <span class="text-xs" x-text="log.message"></span>
+                            </td>
+                            <td class="hidden md:table-cell">
+                                <span class="text-xs opacity-50" x-text="log.user_email || '—'"></span>
+                            </td>
+                            <td class="hidden sm:table-cell">
+                                <span x-show="log.success" class="green-badge">OK</span>
+                                <span x-show="!log.success" class="red-badge">Fail</span>
+                            </td>
+                            <td x-show="system" class="hidden md:table-cell">
+                                <span class="text-xs opacity-50" x-text="log.tenant_name || log.tenant_id || '—'"></span>
+                            </td>
+                            <td class="hidden lg:table-cell">
+                                <span class="text-xs opacity-50" x-text="formatDate(log.date_added)"></span>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+
+            <!-- Pagination -->
+            <div class="flex items-center justify-between px-4 py-3 border-t border-base-200">
+                <span class="text-xs opacity-40"
+                    x-text="`Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, filteredItems.length)} of ${filteredItems.length}`">
+                </span>
+                <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-1">
+                        <button @click="page--" :disabled="page === 1" class="btn btn-xs btn-ghost">‹</button>
+                        <template x-for="p in totalPages" :key="p">
+                            <button
+                                @click="page = p"
+                                class="btn btn-xs"
+                                :class="page === p ? 'btn-primary' : 'btn-ghost'"
+                                x-text="p">
+                            </button>
+                        </template>
+                        <button @click="page++" :disabled="page === totalPages" class="btn btn-xs btn-ghost">›</button>
+                    </div>
+                    <select x-model.number="pageSize" @change="page = 1" class="select select-xs select-bordered w-20">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Detail modal -->
+    <div class="modal" :class="{ 'modal-open': showModal }">
+        <div class="modal-box w-11/12 max-w-2xl">
+            <form method="dialog">
+                <button @click="showModal = false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+            </form>
+            <h3 class="font-bold text-lg mb-4">Log Detail</h3>
+            <div class="grid grid-cols-2 gap-3 text-sm">
+                <div>
+                    <div class="text-xs opacity-40 mb-0.5">Level</div>
+                    <div x-text="selectedItem.level"></div>
+                </div>
+                <div>
+                    <div class="text-xs opacity-40 mb-0.5">Action</div>
+                    <div x-text="selectedItem.action"></div>
+                </div>
+                <div>
+                    <div class="text-xs opacity-40 mb-0.5">Namespace</div>
+                    <div x-text="selectedItem.namespace"></div>
+                </div>
+                <div>
+                    <div class="text-xs opacity-40 mb-0.5">Success</div>
+                    <div x-text="selectedItem.success ? 'Yes' : 'No'"></div>
+                </div>
+                <div class="col-span-2">
+                    <div class="text-xs opacity-40 mb-0.5">Message</div>
+                    <div x-text="selectedItem.message"></div>
+                </div>
+                <div>
+                    <div class="text-xs opacity-40 mb-0.5">User</div>
+                    <div x-text="selectedItem.user_email || '—'"></div>
+                </div>
+                <div>
+                    <div class="text-xs opacity-40 mb-0.5">Tenant</div>
+                    <div x-text="selectedItem.tenant_name || '—'"></div>
+                </div>
+                <div>
+                    <div class="text-xs opacity-40 mb-0.5">Date</div>
+                    <div x-text="selectedItem.date_added"></div>
+                </div>
+                <template x-if="selectedItem.meta && Object.keys(selectedItem.meta).length > 0">
+                    <div class="col-span-2">
+                        <div class="text-xs opacity-40 mb-0.5">Meta</div>
+                        <pre class="text-xs bg-base-200 rounded p-3 overflow-auto" x-text="JSON.stringify(selectedItem.meta, null, 2)"></pre>
+                    </div>
+                </template>
+            </div>
+        </div>
+        <div class="modal-backdrop" @click="showModal = false"></div>
+    </div>
+
+    <script>
+    function table() {
+        return {
+            items:         [],
+            loading:       true,
+            system:        {{ system | default(false) | tojson }},
+            search:        '',
+            sortField:     'date_added',
+            sortAsc:       false,
+            page:          1,
+            pageSize:      25,
+            filterLevel:   '',
+            filterAction:  '',
+            filterSuccess: '',
+            filterTenant:  '',
+            showModal:     false,
+            selectedItem:  {},
+
+            get tenantOptions() {
+                const seen = new Map();
+                this.items.forEach(r => {
+                    if (r.tenant_id && !seen.has(r.tenant_id)) {
+                        seen.set(r.tenant_id, r.tenant_name || r.tenant_id);
+                    }
+                });
+                return [...seen.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+            },
+
+            get filteredItems() {
+                let rows = [...this.items];
+
+                if (this.filterLevel)
+                    rows = rows.filter(r => r.level === this.filterLevel);
+                if (this.filterAction)
+                    rows = rows.filter(r => r.action === this.filterAction);
+                if (this.filterSuccess !== '')
+                    rows = rows.filter(r => String(r.success) === this.filterSuccess);
+                if (this.filterTenant)
+                    rows = rows.filter(r => r.tenant_id === this.filterTenant);
+
+                if (this.search.trim()) {
+                    const q = this.search.toLowerCase().trim();
+                    rows = rows.filter(r =>
+                        r.message?.toLowerCase().includes(q) ||
+                        r.user_email?.toLowerCase().includes(q) ||
+                        r.namespace?.toLowerCase().includes(q) ||
+                        r.tenant_name?.toLowerCase().includes(q)
+                    );
+                }
+
+                rows.sort((a, b) => {
+                    const av = (a[this.sortField] ?? '').toString().toLowerCase();
+                    const bv = (b[this.sortField] ?? '').toString().toLowerCase();
+                    return this.sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+                });
+
+                return rows;
+            },
+
+            get totalPages() {
+                return Math.max(1, Math.ceil(this.filteredItems.length / this.pageSize));
+            },
+
+            get pagedItems() {
+                const start = (this.page - 1) * this.pageSize;
+                return this.filteredItems.slice(start, start + this.pageSize);
+            },
+
+            init() {
+                this.$watch('search',        () => { this.page = 1; });
+                this.$watch('pageSize',      () => { this.page = 1; });
+                this.$watch('filterLevel',   () => { this.page = 1; });
+                this.$watch('filterAction',  () => { this.page = 1; });
+                this.$watch('filterSuccess', () => { this.page = 1; });
+                this.$watch('filterTenant',  () => { this.page = 1; });
+                this.getItems();
+            },
+
+            setSort(field) {
+                if (this.sortField === field) {
+                    this.sortAsc = !this.sortAsc;
+                } else {
+                    this.sortField = field;
+                    this.sortAsc   = true;
+                }
+                this.page = 1;
+            },
+
+            openModal(log) {
+                this.selectedItem = log;
+                this.showModal    = true;
+            },
+
+            exportCSV() {
+                const headers = ['level', 'action', 'namespace', 'message', 'user_email', 'success', 'tenant_name', 'date_added'];
+                const rows    = this.filteredItems.map(r => headers.map(h => JSON.stringify(r[h] ?? '')).join(','));
+                const csv     = [headers.join(','), ...rows].join('\n');
+                const a       = Object.assign(document.createElement('a'), {
+                    href:     URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
+                    download: 'logs.csv',
+                });
+                a.click();
+            },
+
+            getItems() {
+                this.loading = true;
+                const url = this.system
+                    ? '/api/logs'
+                    : `/api/tenants/${this.$store.app.tenantId}/logs`;
+                request('GET', url,
+                    data => { this.items = data; this.loading = false; },
+                    err  => { toast(err.message, 'error'); this.loading = false; }
+                );
+            },
+
+            formatDate(iso) {
+                if (!iso) return '—';
+                const d    = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+                const diff = Math.floor((Date.now() - d.getTime()) / 1000);
+                if (diff < 60)     return 'just now';
+                if (diff < 3600)   return Math.floor(diff / 60)    + 'm ago';
+                if (diff < 86400)  return Math.floor(diff / 3600)  + 'h ago';
+                if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+                return d.toLocaleDateString();
+            },
+        };
+    }
+    </script>
+</div>
+{% endblock %}

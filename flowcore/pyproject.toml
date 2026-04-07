@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "flowcore"
+version = "0.1.0"
+description = "Pure flow execution logic shared between worker and scheduler"
+requires-python = ">=3.10"
+# No dependencies on Flask, SQLAlchemy, or any DB driver.
+# Add only what flow_runner / nodes / operators / resolve actually need:
+dependencies = [
+    "requests>=2.31",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["flowcore*"]

@@ -1,0 +1,134 @@
+services:
+  app:
+    container_name: app
+    image: app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - db_nw
+      - web_nw
+      - queue_nw
+    ports:
+      - "8000:5000"
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - SQLALCHEMY_DATABASE_URI=postgresql://${POSTGRES_USER:-db1}:${POSTGRES_PASSWORD:-db1}@${POSTGRES_HOST:-postgres}/${POSTGRES_DB:-db1}
+      - RESET_DB=${RESET_DB:-no}
+      - VERSION=${VERSION:-1.0.0}
+      - POSTGRES_USER=${POSTGRES_USER:-db1}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-db1}
+      - POSTGRES_DB=${POSTGRES_DB:-db1}
+      - REDIS_URL=redis://redis:6379/0
+      - GUNICORN_WORKERS=2
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      app:
+        condition: service_started
+    networks:
+      - queue_nw
+      - worker_egress
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - APP_BASE_URL=http://app:5000
+      - INTERNAL_API_SECRET=${INTERNAL_API_SECRET:-internal-secret-change-me}
+    deploy:
+      replicas: 1
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777,noexec
+      - /root/.cache/pip:size=256m,mode=0755
+    user: "1000:1000"
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: scheduler/Dockerfile
+    depends_on:
+      redis:
+        condition: service_healthy
+      app:
+        condition: service_started
+    networks:
+      - queue_nw
+    env_file:
+      - .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - APP_BASE_URL=http://app:5000
+      - SCHEDULER_POLL_INTERVAL=${SCHEDULER_POLL_INTERVAL:-30}
+    restart: unless-stopped
+
+  postgres:
+    container_name: postgres
+    image: postgres:15
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-db1}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-db1}
+      POSTGRES_DB: ${POSTGRES_DB:-db1}
+      PGDATA: /data/postgres
+    volumes:
+      - postgres_data:/data/postgres
+    ports:
+      - "5432:5432"
+    networks:
+      - db_nw
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-db1} -d ${POSTGRES_DB:-db1}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - queue_nw
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+networks:
+  db_nw:
+    driver: bridge
+  web_nw:
+    driver: bridge
+  queue_nw:
+    driver: bridge
+  worker_egress:
+    driver: bridge
+
+volumes:
+  postgres_data:

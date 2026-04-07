@@ -1,0 +1,470 @@
+{% extends "layouts/base.html" %}
+
+{% block head %}
+  {% import "helpers/src_macros.html" as macro %}
+  {{ macro.filehelper(editor=True) }}
+
+  <style>
+  .editing .ce-block:hover { outline: 1px solid oklch(var(--bc) / 0.12); border-radius: 4px; }
+
+  #editorjs h1 { font-size: 2em; font-weight: 700; margin: 0.5em 0 0.25em; }
+  #editorjs h2 { font-size: 1.5em; font-weight: 600; margin: 0.5em 0 0.25em; }
+  #editorjs h3 { font-size: 1.25em; font-weight: 600; margin: 0.4em 0 0.2em; }
+  #editorjs ul { list-style: disc; padding-left: 1.5em; }
+  #editorjs ol { list-style: decimal; padding-left: 1.5em; }
+  #editorjs li { margin: 0.15em 0; }
+  #editorjs blockquote { border-left: 3px solid oklch(var(--bc) / 0.15); padding-left: 1em; color: oklch(var(--bc) / 0.6); }
+  #editorjs code { background: oklch(var(--bc) / 0.06); border-radius: 3px; padding: 0.15em 0.35em; font-size: 0.88em; }
+  #editorjs pre { background: oklch(var(--bc) / 0.04); border-radius: 6px; padding: 12px 16px; overflow-x: auto; }
+  #editorjs pre code { background: none; padding: 0; }
+  #editorjs a { color: oklch(var(--p)); text-decoration: underline; }
+  </style>
+{% endblock %}
+
+{% block page_header %}{% endblock %}
+{% block page_content %}
+
+<div x-data="ticketView">
+
+  <!-- Loading -->
+  <div x-show="loading" class="flex-1 flex items-center justify-center">
+    <span class="loading loading-spinner loading-md text-primary"></span>
+  </div>
+
+  <!-- Not found -->
+  <div x-show="!loading && notFound" class="flex-1 flex flex-col items-center justify-center gap-2">
+    <div class="text-4xl">🎫</div>
+    <div class="font-semibold">Ticket not found</div>
+    <a href="/tickets" class="btn btn-primary btn-sm mt-2">Browse tickets</a>
+  </div>
+
+  <!-- Main layout -->
+  <div x-show="!loading && !notFound" class="flex flex-1 overflow-hidden" style="height: calc(100vh - 75px)"  x-cloak>
+
+    <!-- LEFT: Content -->
+    <div class="flex-1 overflow-y-auto pr-6">
+
+      <div class="flex justify-between">
+        <a href="/tickets" class="btn btn-sm btn-ghost border border-base-300"><i class="ti ti-arrow-left text-lg"></i>Tickets</a>
+        <div class="flex flex-row gap-x-2 justify-end mb-4">
+          <span class="text-xs text-success my-auto mr-2" x-text="saveIndicator === 'saving' ? 'Saving…' : saveIndicator === 'saved' ? 'Saved' : ''"></span>
+          <button x-show="$store.app.isEditor || $store.app.user.super" class="btn btn-ghost btn-sm gap-1 text-xs" @click="toggleEditMode()"
+                  :class="editMode ? 'text-primary' : 'opacity-50'">
+            <svg x-show="!editMode" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            <svg x-show="editMode" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+            <span x-text="editMode ? 'Editing' : 'View only'"></span>
+          </button>
+          <button class="btn btn-ghost btn-sm gap-1 text-xs opacity-50 hover:opacity-100" @click="copyLink()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+            Copy link
+          </button>
+          <button x-show="$store.app.isEditor || $store.app.user.super" class="btn btn-ghost btn-sm text-error gap-1 text-xs" @click="showDeleteModal = true">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+            Delete
+          </button>
+        </div>
+      </div>
+
+      <div class="mx-auto">
+
+        <!-- Title + badges -->
+        <div class="flex items-start gap-3 mb-2">
+          <input x-model="ticket.title"
+                 @input="autoSave()"
+                 :readonly="!editMode"
+                 class="input input-ghost text-3xl font-bold flex-1 px-0 focus:outline-none focus:bg-transparent"
+                 :class="!editMode ? 'cursor-default' : ''"
+                 placeholder="Untitled" />
+          <div class="flex items-center gap-1.5 flex-shrink-0 mt-2">
+            <span class="opacity-50" x-text="'ID: '+ticket.id"></span>
+            <span class="badge badge-sm font-semibold"
+                  :class="{
+                    'yellow-badge': ticket.status === 'in_progress',
+                    'blue-badge':   ticket.status === 'open',
+                    'gray-badge':   ticket.status === 'closed',
+                  }"
+                  x-text="(ticket.status || 'open').replace('_', ' ')"></span>
+            <span class="badge badge-sm font-semibold"
+                  :class="{
+                    'gray-badge':   ticket.priority === 'low',
+                    'yellow-badge': ticket.priority === 'medium',
+                    'red-badge':    ticket.priority === 'high' || ticket.priority === 'critical',
+                  }"
+                  x-text="ticket.priority || 'medium'"></span>
+          </div>
+        </div>
+        <!-- Timestamps — spans both columns -->
+        <div class="col-span-2 flex flex-row gap-4 text-[10px] opacity-50 mb-2 whitespace-nowrap">
+          <div class="flex flex-row gap-x-1">
+            <span>Created:</span>
+            <span x-text="formatRelative(ticket.created_at)"></span>
+          </div>
+          <div class="flex flex-row gap-x-1">
+            <span>Updated:</span>
+            <span x-text="formatRelative(ticket.updated_at)"></span>
+          </div>
+          <div x-show="ticket.status === 'closed' && ticket.closed_at" class="flex flex-row gap-x-1">
+            <span>Closed:</span>
+            <span x-text="formatRelative(ticket.closed_at)"></span>
+          </div>
+        </div>
+
+        <!-- Properties -->
+        <div class="grid grid-cols-[100px_1fr_100px_1fr] gap-y-1 pb-4 border-b border-base-300 text-sm">
+
+          <span class="text-xs opacity-40 font-semibold uppercase py-1.5">Status</span>
+          <select class="select select-ghost select-sm w-full max-w-[180px]"
+                  x-model="ticket.status"
+                  @change="if(ticket.status === 'closed') ticket.closed_at = new Date().toISOString(); autoSave();"
+                  :disabled="!editMode">
+            <option value="open">Open</option>
+            <option value="in_progress">In Progress</option>
+            <option value="resolved">Resolved</option>
+            <option value="closed">Closed</option>
+          </select>
+
+          <span class="text-xs opacity-40 font-semibold uppercase py-1.5">Priority</span>
+          <select class="select select-ghost select-sm w-full max-w-[180px]"
+                  x-model="ticket.priority"
+                  @change="autoSave()"
+                  :disabled="!editMode">
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+          </select>
+
+          <span class="text-xs opacity-40 font-semibold uppercase py-1.5">Assignee</span>
+          <div class="flex items-center gap-2 max-w-[240px]">
+            <select x-show="editMode"
+                    class="select select-ghost select-sm w-full"
+                    x-model="ticket.assignee"
+                    @change="autoSave()">
+              <option value="">Unassigned</option>
+              <template x-for="member in members" :key="member.id">
+                <option :value="member.email" x-text="member.display_name || member.email"></option>
+              </template>
+            </select>
+            <span x-show="!editMode"
+                  class="text-sm opacity-60 py-1.5"
+                  x-text="ticket.assignee || 'Unassigned'">
+            </span>
+          </div>
+
+          <!-- Empty cell to fill the 4th column on the assignee row -->
+          <div></div>
+          <div></div>
+        </div>
+        <!-- Editor.js -->
+        <div id="editorjs" class="min-h-[300px]" :class="editMode ? 'editing' : ''"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Comments -->
+    <div class="w-[380px] flex-shrink-0 border-l border-base-300 flex flex-col bg-base-100 h-full">
+
+      <div class="px-4 py-3 border-b border-base-300 flex items-center gap-2 flex-shrink-0">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="opacity-40">
+          <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+        </svg>
+        <span class="text-xs font-bold uppercase tracking-wider opacity-50">Comments</span>
+        <span x-show="comments.length" class="text-[10px] opacity-30" x-text="comments.length"></span>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-4 space-y-3 min-h-0" id="comments-list">
+        <div x-show="!commentsLoading && comments.length === 0" class="flex flex-col items-center justify-center py-16 opacity-30">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="mb-2">
+            <path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/>
+          </svg>
+          <div class="text-xs">No comments yet</div>
+        </div>
+
+        <div x-show="commentsLoading" class="flex justify-center py-8">
+          <span class="loading loading-spinner loading-sm text-primary"></span>
+        </div>
+
+        <template x-for="comment in comments" :key="comment.id">
+          <div class="card card-bordered bg-base-200/50 p-3 group">
+            <div class="flex items-center justify-between mb-1">
+              <div class="flex items-center gap-1.5">
+                <span x-show="comment.author === 'system'" class="badge badge-warning badge-xs text-[9px] font-semibold">SYSTEM</span>
+                <span x-show="comment.author !== 'system'" class="text-[11px] opacity-50" x-text="comment.author"></span>
+              </div>
+              <div class="flex items-center gap-1">
+                <span class="text-[10px] opacity-30" x-text="formatRelative(comment.created_at)"></span>
+                <button class="btn btn-ghost btn-xs btn-square opacity-0 group-hover:opacity-40 hover:!opacity-100 text-error"
+                        @click="confirmDeleteComment(comment.id)">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+            </div>
+            <div class="text-[13px] leading-relaxed opacity-80 whitespace-pre-wrap" x-text="comment.body"></div>
+          </div>
+        </template>
+      </div>
+
+      <div class="border-t border-base-300 p-4 flex-shrink-0">
+        <textarea x-model="commentText"
+                  @keydown.meta.enter="addComment()"
+                  @keydown.ctrl.enter="addComment()"
+                  class="textarea textarea-bordered w-full text-[13px] leading-relaxed resize-none"
+                  rows="3"
+                  placeholder="Write a comment…"></textarea>
+        <div class="flex items-center justify-between mt-2">
+          <span class="text-[10px] opacity-30">⌘ Enter to send</span>
+          <button class="btn btn-primary btn-sm"
+                  :disabled="!commentText.trim()"
+                  @click="addComment()">
+            Comment
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Delete ticket modal ──────────────────────────────────────────── -->
+  <div class="modal" :class="{ 'modal-open': showDeleteModal }">
+    <div class="modal-box max-w-sm">
+      <form method="dialog">
+        <button @click="showDeleteModal = false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+      </form>
+      <h3 class="font-bold text-lg">Delete ticket?</h3>
+      <p class="text-sm font-semibold mt-1 truncate" x-text="ticket.title"></p>
+      <p class="text-sm opacity-60 mt-2">This will permanently delete the ticket and all its comments. This action cannot be undone.</p>
+      <div class="modal-action">
+        <button class="btn btn-sm" @click="showDeleteModal = false">Cancel</button>
+        <button class="btn btn-sm btn-error" :disabled="deleting" @click="deleteTicket()">
+          <span x-show="deleting" class="loading loading-spinner loading-xs"></span>
+          Delete
+        </button>
+      </div>
+    </div>
+    <div class="modal-backdrop" @click="showDeleteModal = false"></div>
+  </div>
+
+  <!-- ── Delete comment modal ─────────────────────────────────────────── -->
+  <div class="modal" :class="{ 'modal-open': showDeleteCommentModal }">
+    <div class="modal-box max-w-sm">
+      <form method="dialog">
+        <button @click="showDeleteCommentModal = false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+      </form>
+      <h3 class="font-bold text-lg">Delete comment?</h3>
+      <p class="text-sm opacity-60 mt-2">This action cannot be undone.</p>
+      <div class="modal-action">
+        <button class="btn btn-sm" @click="showDeleteCommentModal = false">Cancel</button>
+        <button class="btn btn-sm btn-error" :disabled="deleting" @click="deleteComment()">
+          <span x-show="deleting" class="loading loading-spinner loading-xs"></span>
+          Delete
+        </button>
+      </div>
+    </div>
+    <div class="modal-backdrop" @click="showDeleteCommentModal = false"></div>
+  </div>
+
+  <script>
+    document.addEventListener('alpine:init', () => {
+      Alpine.data('ticketView', () => ({
+        ticket:       {},
+        tagsInput:    '',
+        loading:      true,
+        notFound:     false,
+        editor:       null,
+        saveIndicator: 'idle',
+        _saveTimeout: null,
+        _editorReady: false,
+        editMode:     false,
+        members:      [],
+
+        comments:         [],
+        commentsLoading:  false,
+        commentText:      '',
+
+        showDeleteModal:        false,
+        showDeleteCommentModal: false,
+        pendingDeleteCommentId: null,
+        deleting:               false,
+
+        init() {
+          const parts    = window.location.pathname.split('/');
+          const ticketId = parts[parts.length - 1];
+          this.loadTicket(ticketId);
+          this.loadMembers();
+        },
+
+        async loadMembers() {
+          try {
+            const res = await fetch(`/api/${this.$store.app.tenantId}/users`);
+            if (!res.ok) return;
+            this.members = await res.json();
+          } catch { this.members = []; }
+        },
+
+        async loadTicket(id) {
+          try {
+            const res = await fetch(`/api/tenants/${this.$store.app.tenantId}/tickets/${id}`);
+            if (!res.ok) { this.notFound = true; this.loading = false; return; }
+            this.ticket   = await res.json();
+            this.tagsInput = (this.ticket.tags || []).join(', ');
+            this.loading  = false;
+            this.$nextTick(() => this.initEditor());
+            this.loadComments();
+          } catch {
+            this.notFound = true;
+            this.loading  = false;
+          }
+        },
+
+        initEditor() {
+          const editorData = this.ticket.content || { blocks: [] };
+          if (this.$store.app.user.super || this.$store.app.hasRole('editor')) {
+            this.editMode = true;
+          }
+          this.editor = new EditorJS({
+            holder:    'editorjs',
+            data:      editorData,
+            readOnly:  !this.editMode,
+            placeholder: 'Start writing, or press / for commands…',
+            tools: {
+              header:     { class: Header,     config: { levels: [1, 2, 3], defaultLevel: 2 } },
+              list:       { class: List,       inlineToolbar: true },
+              checklist:  { class: Checklist,  inlineToolbar: true },
+              quote:      { class: Quote,      inlineToolbar: true },
+              delimiter:  Delimiter,
+              code:       CodeTool,
+              table:      { class: Table,      inlineToolbar: true },
+              marker:     { class: Marker },
+              inlineCode: { class: InlineCode },
+            },
+            onChange: () => { if (this._editorReady) this.autoSave(); },
+            onReady:  () => { this._editorReady = true; },
+          });
+        },
+
+        autoSave() {
+          if (this._saveTimeout) clearTimeout(this._saveTimeout);
+          this._saveTimeout = setTimeout(() => this.saveTicket(), 500);
+        },
+
+        async saveTicket() {
+          this.saveIndicator = 'saving';
+          try {
+            let content = this.ticket.content || { blocks: [] };
+            if (this.editor && this._editorReady) {
+              content = await this.editor.save();
+            }
+            const tags = this.tagsInput.split(',').map(t => t.trim()).filter(Boolean);
+            const res  = await fetch(`/api/tenants/${this.$store.app.tenantId}/tickets/${this.ticket.id}`, {
+              method:  'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({
+                title:    this.ticket.title,
+                status:   this.ticket.status,
+                priority: this.ticket.priority,
+                assignee: this.ticket.assignee,
+                tags,
+                content,
+              }),
+            });
+            if (res.ok) {
+              const data = await res.json();
+              this.ticket.updated_at = data.updated_at;
+              this.saveIndicator = 'saved';
+            } else {
+              this.saveIndicator = 'error';
+            }
+          } catch {
+            this.saveIndicator = 'error';
+          }
+          setTimeout(() => { if (this.saveIndicator !== 'error') this.saveIndicator = 'idle'; }, 2000);
+        },
+
+        toggleEditMode() {
+          this.editMode = !this.editMode;
+          if (this.editor) this.editor.readOnly.toggle();
+        },
+
+        copyLink() {
+          navigator.clipboard.writeText(window.location.href).then(() => {
+            toast('Link copied to clipboard');
+          });
+        },
+
+        async deleteTicket() {
+          this.deleting = true;
+          try {
+            await fetch(`/api/tenants/${this.$store.app.tenantId}/tickets/${this.ticket.id}`, { method: 'DELETE' });
+            window.location.href = '/tickets';
+          } catch {
+            toast('Failed to delete ticket', 'error');
+            this.deleting = false;
+            this.showDeleteModal = false;
+          }
+        },
+
+        async loadComments() {
+          this.commentsLoading = true;
+          try {
+            const res    = await fetch(`/api/tenants/${this.$store.app.tenantId}/tickets/${this.ticket.id}/comments`);
+            this.comments = await res.json();
+          } catch { this.comments = []; }
+          this.commentsLoading = false;
+          this.$nextTick(() => {
+            const list = document.getElementById('comments-list');
+            if (list) list.scrollTop = list.scrollHeight;
+          });
+        },
+
+        async addComment() {
+          const body = this.commentText.trim();
+          if (!body) return;
+          try {
+            const res = await fetch(`/api/tenants/${this.$store.app.tenantId}/tickets/${this.ticket.id}/comments`, {
+              method:  'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body:    JSON.stringify({ body, author: this.$store.app.user.email || 'user' }),
+            });
+            const comment = await res.json();
+            this.comments.push(comment);
+            this.commentText = '';
+            this.$nextTick(() => {
+              const list = document.getElementById('comments-list');
+              if (list) list.scrollTop = list.scrollHeight;
+            });
+          } catch { toast('Failed to add comment', 'error'); }
+        },
+
+        confirmDeleteComment(commentId) {
+          this.pendingDeleteCommentId = commentId;
+          this.showDeleteCommentModal = true;
+        },
+
+        async deleteComment() {
+          if (!this.pendingDeleteCommentId) return;
+          this.deleting = true;
+          try {
+            await fetch(`/api/tenants/${this.$store.app.tenantId}/tickets/${this.ticket.id}/comments/${this.pendingDeleteCommentId}`, { method: 'DELETE' });
+            this.comments = this.comments.filter(c => c.id !== this.pendingDeleteCommentId);
+            toast('Comment deleted');
+          } catch {
+            toast('Failed to delete comment', 'error');
+          }
+          this.deleting               = false;
+          this.showDeleteCommentModal = false;
+          this.pendingDeleteCommentId = null;
+        },
+
+        formatRelative(iso) {
+          if (!iso) return '';
+          const d    = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+          const diff = Math.floor((Date.now() - d.getTime()) / 1000);
+          if (diff < 60)     return 'just now';
+          if (diff < 3600)   return Math.floor(diff / 60)    + 'm ago';
+          if (diff < 86400)  return Math.floor(diff / 3600)  + 'h ago';
+          if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+          return d.toLocaleDateString();
+        },
+      }));
+    });
+  </script>
+</div>
+{%endblock%}

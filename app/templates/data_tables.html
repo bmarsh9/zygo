@@ -1,0 +1,1533 @@
+{% extends "layouts/base.html" %}
+
+{% block head %}
+   <style>
+      [x-cloak] { display: none !important; }
+      .dark-scroll::-webkit-scrollbar { width: 4px; height: 4px; }
+      .dark-scroll::-webkit-scrollbar-thumb { background: oklch(var(--b3)); border-radius: 2px; }
+      .table-row-hover:hover { background: oklch(var(--b2)); }
+      .cell-truncate { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .filter-badge-pulse { animation: badge-in 0.2s ease-out; }
+      @keyframes badge-in { from { transform: scale(0.5); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+      .filter-row-enter { animation: row-in 0.15s ease-out; }
+      @keyframes row-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+    </style>
+{% endblock %}
+
+{% block content %}
+  <div class="font-sans h-screen flex flex-col overflow-hidden bg-base-200" x-data="dataViewer" x-cloak>
+
+  <!-- ══ LAYOUT ══ -->
+  <div class="flex flex-1 overflow-hidden">
+
+    <!-- ══ LEFT: Table List ══ -->
+    <div class="w-[240px] bg-base-100 border-r border-base-300 flex flex-col flex-shrink-0">
+      <div class="p-3 border-b border-base-300 flex flex-col gap-2">
+        <input class="input input-bordered input-sm w-full" placeholder="Search tables…" x-model="tableSearch" />
+        <button class="btn btn-primary btn-sm w-full gap-1.5" @click="openCreateTableModal()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          New Table
+        </button>
+      </div>
+
+      <!-- Loading -->
+      <div x-show="tablesLoading" class="flex flex-col items-center justify-center py-8 opacity-40">
+        <span class="loading loading-spinner loading-sm mb-2"></span>
+        <div class="text-[10px]">Loading tables…</div>
+      </div>
+
+      <!-- Table list -->
+      <div class="flex-1 overflow-y-auto p-1.5 dark-scroll" x-show="!tablesLoading">
+        <div x-show="filteredTables.length === 0 && !tablesLoading" class="text-xs opacity-40 text-center py-8">No tables found</div>
+        <template x-for="t in filteredTables" :key="t.name">
+          <div class="flex items-center gap-2 p-2.5 rounded-lg cursor-pointer border border-transparent mb-0.5 hover:bg-base-200 transition-all"
+               :class="selectedTable === t.name ? 'bg-base-200 !border-primary/40' : ''"
+               @click="selectTable(t.name)">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 opacity-40 flex-shrink-0"><path d="M3 5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M3 10h18"/><path d="M10 3v18"/></svg>
+            <div class="flex-1 min-w-0">
+              <div class="text-[11.5px] font-semibold truncate" x-text="t.name"></div>
+              <div class="text-[9.5px] opacity-40" x-text="t.count + ' record' + (t.count !== 1 ? 's' : '')"></div>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <!-- Delete table -->
+      <div class="p-2 border-t border-base-300" x-show="selectedTable">
+        <button class="btn btn-ghost btn-xs w-full text-error gap-1" @click="deleteTable()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7l16 0"/><path d="M5 7l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12"/><path d="M9 7v-3a1 1 0 011-1h4a1 1 0 011 1v3"/></svg>
+          Delete table
+        </button>
+      </div>
+    </div>
+
+    <!-- ══ CENTER: Records ══ -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+
+      <!-- No table selected -->
+      <div x-show="!selectedTable && !tablesLoading" class="flex-1 flex flex-col items-center justify-center opacity-30">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="mb-3 opacity-40"><path d="M3 5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M3 10h18"/><path d="M3 15h18"/><path d="M10 3v18"/></svg>
+        <div class="text-sm font-medium">Select a table</div>
+        <div class="text-xs mt-1">Choose a table from the left to view its records</div>
+      </div>
+
+      <!-- Table header -->
+      <div x-show="selectedTable" class="px-4 py-3 border-b border-base-300 bg-base-100 flex items-center gap-3 flex-shrink-0">
+        <div class="flex-1 min-w-0">
+          <div class="text-sm font-bold" x-text="selectedTable"></div>
+          <div class="text-[10px] opacity-40" x-text="filteredRecordCount + ' record' + (filteredRecordCount !== 1 ? 's' : '') + (activeFilterCount > 0 ? ' (filtered)' : '')"></div>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <!-- Days range -->
+          <select
+            class="select select-bordered select-sm text-[11px] w-auto"
+            x-model.number="days"
+            @change="offset = 0; loadRecords()"
+          >
+            <option value="7">Last 7 days</option>
+            <option value="14">Last 14 days</option>
+            <option value="30">Last 30 days</option>
+            <option value="45">Last 45 days</option>
+          </select>
+
+          <!-- Add record -->
+          <button class="btn btn-primary btn-sm gap-1.5" @click="openAddRecordModal()" title="Add new record">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            <span class="text-[11px]">Add Record</span>
+          </button>
+
+          <!-- Edit schema -->
+          <button class="btn btn-ghost btn-sm gap-1.5" @click="openEditSchemaModal()" title="Edit table schema">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10.5-10.5a2.828 2.828 0 10-4-4L4 16v4"/><path d="M13.5 6.5l4 4"/></svg>
+            <span class="text-[11px]">Schema</span>
+          </button>
+
+          <!-- Filter button -->
+          <button
+            class="btn btn-ghost btn-sm gap-1.5 relative"
+            :class="activeFilterCount > 0 ? 'text-primary' : ''"
+            @click="openFilterModal()"
+            title="Filter records"
+            x-show="selectedTable"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+            </svg>
+            <span class="text-[11px]">Filter</span>
+            <span
+              x-show="activeFilterCount > 0"
+              x-text="activeFilterCount"
+              class="absolute -top-1 -right-1 bg-primary text-primary-content text-[9px] font-bold rounded-full w-4 h-4 flex items-center justify-center filter-badge-pulse"
+            ></span>
+          </button>
+
+          <!-- Refresh -->
+          <button class="btn btn-ghost btn-sm btn-square" @click="loadRecords()" title="Refresh">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0115-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 01-15 6.7L3 16"/></svg>
+          </button>
+
+          <!-- Export -->
+          <button class="btn btn-ghost btn-sm gap-1" @click="exportTable()" title="Export as JSON">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Active filter pills -->
+      <div
+        x-show="activeFilterCount > 0 && selectedTable"
+        class="px-4 py-2 bg-base-100 border-b border-base-300 flex items-center gap-2 flex-wrap flex-shrink-0"
+      >
+        <span class="text-[10px] font-semibold opacity-40 uppercase tracking-wider">Filters:</span>
+        <template x-for="(f, idx) in activeFilters" :key="idx">
+          <div class="badge badge-sm gap-1.5 font-mono text-[10px] pr-1 border border-primary/30 bg-primary/5 text-primary">
+            <span x-text="f.column"></span>
+            <span class="opacity-60" x-text="operatorLabel(f.operator)"></span>
+            <span x-text="f.value"></span>
+            <button class="ml-0.5 hover:opacity-70" @click="removeFilter(idx)">
+              <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </template>
+        <button class="text-[10px] opacity-40 hover:opacity-70 hover:text-error transition-all ml-1" @click="clearAllFilters()">Clear all</button>
+      </div>
+
+      <!-- Loading records -->
+      <div x-show="recordsLoading && selectedTable" class="flex-1 flex flex-col items-center justify-center opacity-40">
+        <span class="loading loading-spinner loading-sm mb-2"></span>
+        <div class="text-xs" x-text="loadProgress ? loadProgress : 'Loading records…'"></div>
+        <div x-show="loadProgress" class="w-48 mt-2">
+          <progress class="progress progress-primary w-full" :value="loadedCount" :max="loadTotalExpected || 100"></progress>
+        </div>
+      </div>
+
+      <!-- Records table -->
+      <div x-show="selectedTable && !recordsLoading" class="flex-1 overflow-auto dark-scroll">
+        <div x-show="filteredAndSortedRecords.length === 0" class="flex flex-col items-center justify-center py-16 opacity-30">
+          <div class="text-2xl mb-2" x-text="activeFilterCount > 0 ? '🔍' : '📭'"></div>
+          <div class="text-xs" x-text="activeFilterCount > 0 ? 'No records match the current filters' : 'No records in this table'"></div>
+        </div>
+
+        <table x-show="filteredAndSortedRecords.length > 0" class="table table-xs table-pin-rows w-full">
+          <thead>
+            <tr class="bg-base-200">
+              <th class="text-[11px] font-bold w-16 p-4">#</th>
+              <th class="text-[11px] font-bold w-28 p-4">Key</th>
+              <template x-for="col in columns" :key="col">
+                <th class="text-[11px] font-bold cursor-pointer hover:text-primary transition-colors p-4 capitalize"
+                    @click="sortBy(col)">
+                  <span x-text="col"></span>
+                  <span x-show="sortColumn === col" x-text="sortDir === 'asc' ? ' ↑' : ' ↓'" class="text-primary"></span>
+                </th>
+              </template>
+              <th class="text-[11px] font-bold w-20 p-4">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="(record, idx) in paginatedRecords" :key="record.id">
+              <tr class="table-row-hover cursor-pointer" @click="selectRecord(record)">
+                <td class="text-[10px] font-mono opacity-40" x-text="record.id"></td>
+                <td class="text-[10px] font-mono" x-text="record.key || '—'"></td>
+                <template x-for="col in columns" :key="col">
+                  <td class="text-[11px] cell-truncate" :title="formatCell(record.data[col])" x-text="formatCell(record.data[col])"></td>
+                </template>
+                <td class="flex gap-0.5">
+                  <button class="btn btn-ghost btn-xs btn-square" @click.stop="editRecord(record)" title="Edit">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4l10.5-10.5a2.828 2.828 0 10-4-4L4 16v4"/><path d="M13.5 6.5l4 4"/></svg>
+                  </button>
+                  <button class="btn btn-ghost btn-xs btn-square text-error" @click.stop="deleteRecord(record)" title="Delete">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7l16 0"/><path d="M5 7l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12"/></svg>
+                  </button>
+                </td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- ══ PAGINATION ══ -->
+      <div x-show="selectedTable && filteredAndSortedRecords.length > 0 && !recordsLoading" class="px-4 py-2.5 border-t border-base-300 bg-base-100 flex items-center justify-between flex-shrink-0 gap-4">
+
+        <div class="flex items-center gap-3">
+          <div class="text-[10px] opacity-40 whitespace-nowrap" x-text="`${offset + 1}–${Math.min(offset + pageSize, filteredRecordCount)} of ${filteredRecordCount}`"></div>
+          <select
+            class="select select-bordered select-xs text-[10px] w-auto"
+            :value="pageSize"
+            @change="changePageSize($event.target.value)"
+          >
+            <option value="25">25 / page</option>
+            <option value="50">50 / page</option>
+            <option value="100">100 / page</option>
+            <option value="250">250 / page</option>
+            <option value="500">500 / page</option>
+          </select>
+        </div>
+
+        <div class="join" x-show="totalPages > 1">
+          <button class="join-item btn btn-xs" :disabled="currentPage === 1" @click="goToPage(1)" title="First page">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
+          </button>
+          <button class="join-item btn btn-xs" :disabled="currentPage === 1" @click="prevPage()" title="Previous page">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+          </button>
+          <template x-for="(p, i) in visiblePages" :key="'p'+i">
+            <template x-if="p === '…'">
+              <button class="join-item btn btn-xs btn-disabled opacity-40">…</button>
+            </template>
+            <template x-if="p !== '…'">
+              <button
+                class="join-item btn btn-xs"
+                :class="p === currentPage ? 'btn-primary' : ''"
+                @click="goToPage(p)"
+                x-text="p"
+              ></button>
+            </template>
+          </template>
+          <button class="join-item btn btn-xs" :disabled="currentPage === totalPages" @click="nextPage()" title="Next page">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <button class="join-item btn btn-xs" :disabled="currentPage === totalPages" @click="goToPage(totalPages)" title="Last page">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 17 18 12 13 7"/><polyline points="6 17 11 12 6 7"/></svg>
+          </button>
+        </div>
+
+        <div class="flex items-center gap-1.5" x-show="totalPages > 5">
+          <span class="text-[10px] opacity-40 whitespace-nowrap">Go to</span>
+          <input
+            type="number"
+            class="input input-bordered input-xs w-14 text-[10px] text-center font-mono"
+            min="1"
+            :max="totalPages"
+            :placeholder="currentPage"
+            @keydown.enter="goToPage(Number($event.target.value)); $event.target.value = ''"
+          />
+        </div>
+      </div>
+    </div>
+
+    <!-- ══ RIGHT: Record Detail ══ -->
+    <div x-show="selectedRecord" class="w-[320px] bg-base-100 border-l border-base-300 flex flex-col flex-shrink-0 overflow-hidden transition-all"
+         :class="selectedRecord ? '' : 'w-0 border-0'">
+      <div class="p-3 border-b border-base-300 flex items-center justify-between flex-shrink-0">
+        <div>
+          <div class="text-[10px] font-bold uppercase tracking-wider opacity-40">Record Detail</div>
+          <div class="text-[11px] font-mono opacity-60 mt-0.5" x-text="selectedRecord ? '#' + selectedRecord.id : ''"></div>
+        </div>
+        <button class="btn btn-ghost btn-xs btn-square" @click="selectedRecord = null">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="flex-1 overflow-y-auto p-3 dark-scroll" x-show="selectedRecord">
+        <div class="mb-3">
+          <div class="text-[9px] font-bold uppercase tracking-wider opacity-40 mb-1">Key</div>
+          <div class="text-[11px] font-mono bg-base-200 rounded px-2 py-1" x-text="selectedRecord?.key || 'None'"></div>
+        </div>
+
+        <div class="mb-3">
+          <div class="text-[9px] font-bold uppercase tracking-wider opacity-40 mb-1">Created</div>
+          <div class="text-[10px] opacity-60" x-text="selectedRecord?.created_at || '—'"></div>
+        </div>
+
+        <div class="text-[9px] font-bold uppercase tracking-wider opacity-40 mb-2">Data</div>
+        <template x-for="(val, key) in selectedRecord?.data || {}" :key="key">
+          <div class="mb-2.5">
+            <div class="text-[10px] font-semibold opacity-60 mb-0.5" x-text="key"></div>
+            <div class="text-[11px] bg-base-200 rounded px-2 py-1.5 font-mono break-all whitespace-pre-wrap"
+                 x-text="typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val)"></div>
+          </div>
+        </template>
+
+        <button class="btn btn-ghost btn-xs w-full gap-1 mt-3 border border-base-300" @click="copyRecord()">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 8m0 2a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2h-8a2 2 0 01-2-2z"/><path d="M16 8v-2a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/></svg>
+          Copy JSON
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ══ TOAST ══ -->
+  <div class="toast toast-end toast-bottom z-[9999]">
+    <template x-for="(t, i) in toasts" :key="i">
+      <div class="alert shadow-lg text-sm" :class="{ 'alert-success': t.type === 'success', 'alert-error': t.type === 'error', 'alert-info': t.type === 'info' }">
+        <span x-text="t.msg"></span>
+      </div>
+    </template>
+  </div>
+
+  <!-- ══ Edit Record Modal ══ -->
+  <dialog id="edit-record-modal" class="modal">
+    <div class="modal-box max-w-lg">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="font-bold text-sm">Edit Record</h3>
+          <div class="text-[10px] opacity-40 font-mono mt-0.5" x-text="editingRecord ? '#' + editingRecord.id + (editingRecord.key ? ' — ' + editingRecord.key : '') : ''"></div>
+        </div>
+        <form method="dialog"><button class="btn btn-ghost btn-xs btn-square">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button></form>
+      </div>
+
+      <!-- Loading schema -->
+      <div x-show="editRecordLoading" class="flex items-center justify-center py-8 opacity-40">
+        <span class="loading loading-spinner loading-sm"></span>
+      </div>
+
+      <div x-show="!editRecordLoading" class="space-y-3">
+        <template x-for="field in editRecordSchemaFields" :key="field.name">
+          <div class="form-control">
+            <label class="label pb-1">
+              <span class="label-text text-[11px] font-semibold" x-text="field.name"></span>
+              <span class="label-text-alt text-[10px] opacity-30 font-mono" x-text="field.type"></span>
+            </label>
+
+            <!-- string -->
+            <template x-if="field.type === 'string'">
+              <div>
+                <input
+                  x-show="!editFieldIsLong(field.name)"
+                  class="input input-bordered input-sm w-full"
+                  x-model="editFields[field.name]"
+                />
+                <textarea
+                  x-show="editFieldIsLong(field.name)"
+                  class="textarea textarea-bordered textarea-sm w-full font-mono text-[11px]"
+                  rows="4"
+                  x-model="editFields[field.name]"
+                ></textarea>
+              </div>
+            </template>
+
+            <!-- int -->
+            <template x-if="field.type === 'int'">
+              <input class="input input-bordered input-sm font-mono" type="number" step="1" x-model.number="editFields[field.name]" />
+            </template>
+
+            <!-- float -->
+            <template x-if="field.type === 'float'">
+              <input class="input input-bordered input-sm font-mono" type="number" step="any" x-model.number="editFields[field.name]" />
+            </template>
+
+            <!-- bool -->
+            <template x-if="field.type === 'bool'">
+              <select class="select select-bordered select-sm" x-model="editFields[field.name]">
+                <option value="true">true</option>
+                <option value="false">false</option>
+              </select>
+            </template>
+
+            <!-- json -->
+            <template x-if="field.type === 'json'">
+              <textarea class="textarea textarea-bordered textarea-sm font-mono text-[11px]" rows="4" x-model="editFields[field.name]"></textarea>
+            </template>
+
+            <!-- date -->
+            <template x-if="field.type === 'date'">
+              <input class="input input-bordered input-sm font-mono" type="date" x-model="editFields[field.name]" />
+            </template>
+
+            <!-- fallback for fields not in schema -->
+            <template x-if="!['string','int','float','bool','json','date'].includes(field.type)">
+              <input class="input input-bordered input-sm" x-model="editFields[field.name]" />
+            </template>
+          </div>
+        </template>
+
+        <!-- Fields present in data but NOT in schema (orphaned) -->
+        <template x-for="key in editOrphanedKeys" :key="'orphan-'+key">
+          <div class="form-control">
+            <label class="label pb-1">
+              <span class="label-text text-[11px] font-semibold" x-text="key"></span>
+              <span class="label-text-alt text-[10px] opacity-30 italic">not in schema</span>
+            </label>
+            <input class="input input-bordered input-sm" x-model="editFields[key]" />
+          </div>
+        </template>
+      </div>
+
+      <div class="modal-action">
+        <form method="dialog"><button class="btn btn-ghost btn-sm">Cancel</button></form>
+        <button class="btn btn-primary btn-sm gap-1.5" @click="saveRecord()" :disabled="editRecordSaving">
+          <span class="loading loading-spinner loading-xs" x-show="editRecordSaving"></span>
+          Save
+        </button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
+  <!-- ══ Add Record Modal ══ -->
+  <dialog id="add-record-modal" class="modal">
+    <div class="modal-box max-w-lg">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="font-bold text-sm">Add New Record</h3>
+          <div class="text-[10px] opacity-40 mt-0.5">Adding to: <span class="font-mono font-semibold" x-text="selectedTable"></span></div>
+        </div>
+        <form method="dialog"><button class="btn btn-ghost btn-xs btn-square">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+        </button></form>
+      </div>
+
+      <!-- Loading schema -->
+      <div x-show="addRecordLoading" class="flex items-center justify-center py-8 opacity-40">
+        <span class="loading loading-spinner loading-sm"></span>
+      </div>
+
+      <div x-show="!addRecordLoading">
+        <!-- Record key -->
+        <div class="form-control mb-4">
+          <label class="label pb-1">
+            <span class="label-text text-[11px] font-semibold">Record Key</span>
+            <span class="label-text-alt text-[10px] opacity-40">Optional</span>
+          </label>
+          <input class="input input-bordered input-sm font-mono" x-model="addRecordKey" placeholder="e.g. user_123 or leave blank" />
+        </div>
+
+        <div class="divider my-2 text-[10px] opacity-40">Fields</div>
+
+        <!-- No schema warning -->
+        <div x-show="addRecordSchemaFields.length === 0" class="text-[11px] opacity-40 text-center py-4 bg-base-200 rounded-lg">
+          No schema fields found. Add fields via the Schema editor first.
+        </div>
+
+        <!-- Schema-based fields -->
+        <div class="space-y-3" x-show="addRecordSchemaFields.length > 0">
+          <template x-for="(field, idx) in addRecordSchemaFields" :key="field.name">
+            <div class="form-control">
+              <label class="label pb-1">
+                <span class="label-text text-[11px] font-semibold" x-text="field.name"></span>
+                <span class="label-text-alt text-[10px] opacity-30 font-mono" x-text="field.type"></span>
+              </label>
+
+              <!-- string -->
+              <template x-if="field.type === 'string'">
+                <input class="input input-bordered input-sm" x-model="addRecordFields[field.name]" :placeholder="'Enter ' + field.name" />
+              </template>
+
+              <!-- int -->
+              <template x-if="field.type === 'int'">
+                <input class="input input-bordered input-sm font-mono" type="number" step="1" x-model.number="addRecordFields[field.name]" placeholder="0" />
+              </template>
+
+              <!-- float -->
+              <template x-if="field.type === 'float'">
+                <input class="input input-bordered input-sm font-mono" type="number" step="any" x-model.number="addRecordFields[field.name]" placeholder="0.0" />
+              </template>
+
+              <!-- bool -->
+              <template x-if="field.type === 'bool'">
+                <select class="select select-bordered select-sm" x-model="addRecordFields[field.name]">
+                  <option value="true">true</option>
+                  <option value="false">false</option>
+                </select>
+              </template>
+
+              <!-- json -->
+              <template x-if="field.type === 'json'">
+                <textarea class="textarea textarea-bordered textarea-sm font-mono text-[11px]" rows="3" x-model="addRecordFields[field.name]" placeholder='{"key": "value"}'></textarea>
+              </template>
+
+              <!-- date -->
+              <template x-if="field.type === 'date'">
+                <input class="input input-bordered input-sm font-mono" type="date" x-model="addRecordFields[field.name]" />
+              </template>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <div class="modal-action">
+        <form method="dialog"><button class="btn btn-ghost btn-sm">Cancel</button></form>
+        <button class="btn btn-primary btn-sm gap-1.5" @click="submitAddRecord()" :disabled="addRecordSchemaFields.length === 0 || addRecordSaving">
+          <span class="loading loading-spinner loading-xs" x-show="addRecordSaving"></span>
+          <svg x-show="!addRecordSaving" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          Add Record
+        </button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
+  <!-- ══ Filter Modal ══ -->
+  <dialog id="filter-modal" class="modal">
+    <div class="modal-box max-w-2xl">
+      <div class="flex items-center justify-between mb-5">
+        <div>
+          <h3 class="font-bold text-sm">Filter Records</h3>
+          <div class="text-[10px] opacity-40 mt-0.5" x-text="'Filtering: ' + selectedTable"></div>
+        </div>
+        <form method="dialog">
+          <button class="btn btn-ghost btn-xs btn-square">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          </button>
+        </form>
+      </div>
+
+      <div class="flex items-center gap-3 mb-4 p-3 rounded-lg bg-base-200 border border-base-300">
+        <span class="text-[11px] font-semibold opacity-60 shrink-0">Match</span>
+        <select class="select select-bordered select-xs font-semibold" x-model="filterMatchMode">
+          <option value="all">ALL conditions</option>
+          <option value="any">ANY condition</option>
+        </select>
+        <span class="text-[11px] opacity-40">— records must satisfy <span class="font-semibold" x-text="filterMatchMode === 'all' ? 'every' : 'at least one'"></span> filter below</span>
+      </div>
+
+      <div class="space-y-2 mb-4 min-h-[60px]">
+        <div x-show="draftFilters.length === 0" class="text-[11px] opacity-30 text-center py-4">
+          No filters yet — click "Add filter" to get started
+        </div>
+
+        <template x-for="(f, idx) in draftFilters" :key="idx">
+          <div class="flex items-center gap-2 filter-row-enter">
+            <select class="select select-bordered select-xs flex-1 min-w-0 font-mono" x-model="f.column" @change="onFilterColumnChange(f)">
+              <option value="" disabled>Column…</option>
+              <option value="__key__">key</option>
+              <template x-for="col in columns" :key="col">
+                <option :value="col" x-text="col"></option>
+              </template>
+            </select>
+
+            <select class="select select-bordered select-xs w-36 shrink-0" x-model="f.operator">
+              <template x-for="op in operatorsForFilter(f)" :key="op.value">
+                <option :value="op.value" x-text="op.label"></option>
+              </template>
+            </select>
+
+            <template x-if="!['is_empty', 'is_not_empty'].includes(f.operator)">
+              <input
+                class="input input-bordered input-xs flex-1 min-w-0 font-mono"
+                :placeholder="f.operator === 'between' ? 'e.g. 10,100' : 'Value…'"
+                x-model="f.value"
+              />
+            </template>
+            <template x-if="['is_empty', 'is_not_empty'].includes(f.operator)">
+              <div class="flex-1 min-w-0 text-[10px] opacity-30 italic px-2">no value needed</div>
+            </template>
+
+            <button class="btn btn-ghost btn-xs btn-square text-error shrink-0" @click="removeDraftFilter(idx)" title="Remove filter">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+            </button>
+          </div>
+        </template>
+      </div>
+
+      <button class="btn btn-ghost btn-xs gap-1.5 text-primary" @click="addDraftFilter()">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Add filter
+      </button>
+
+      <div class="divider my-3"></div>
+
+      <div class="flex items-center justify-between">
+        <button class="btn btn-ghost btn-sm text-error gap-1" @click="clearDraftFilters()" x-show="draftFilters.length > 0">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7l16 0"/><path d="M5 7l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12"/></svg>
+          Clear all
+        </button>
+        <div x-show="draftFilters.length === 0"></div>
+
+        <div class="flex gap-2">
+          <form method="dialog"><button class="btn btn-ghost btn-sm">Cancel</button></form>
+          <button class="btn btn-primary btn-sm gap-1.5" @click="applyFilters()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+            Apply filters
+          </button>
+        </div>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
+  <!-- ══ Create Table Modal ══ -->
+  <dialog id="create-table-modal" class="modal">
+    <div class="modal-box max-w-lg">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="font-bold text-sm">Create New Table</h3>
+        <form method="dialog"><button class="btn btn-ghost btn-xs btn-square">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6l-12 12"/><path d="M6 6l12 12"/></svg>
+        </button></form>
+      </div>
+
+      <div class="form-control mb-4">
+        <label class="label pb-1"><span class="label-text text-xs font-semibold">Table name</span></label>
+        <input class="input input-bordered input-sm" x-model="newTableName" placeholder="my_records" />
+        <div class="text-[10px] opacity-40 mt-1">Letters, numbers, and underscores only</div>
+      </div>
+
+      <div class="text-[10px] font-bold uppercase tracking-wider opacity-50 mb-2">Fields</div>
+      <div class="space-y-1.5" id="create-table-fields">
+        <template x-for="(field, idx) in newTableFields" :key="idx">
+          <div class="flex gap-1.5 items-center">
+            <input class="input input-bordered input-sm flex-1" placeholder="Field name" x-model="field.name" />
+            <select class="select select-bordered select-sm w-24 flex-shrink-0" x-model="field.type">
+              <option>string</option>
+              <option>int</option>
+              <option>float</option>
+              <option>bool</option>
+              <option>json</option>
+              <option>date</option>
+            </select>
+            <button class="btn btn-ghost btn-xs btn-square text-error flex-shrink-0"
+                    @click="newTableFields.length > 1 && newTableFields.splice(idx, 1)"
+                    :disabled="newTableFields.length <= 1">×</button>
+          </div>
+        </template>
+      </div>
+      <button class="btn btn-ghost btn-xs border-dashed border-base-300 gap-1 mt-2 w-full" @click="newTableFields.push({ name: '', type: 'string' })">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        Add field
+      </button>
+
+      <div class="modal-action">
+        <form method="dialog"><button class="btn btn-ghost btn-sm">Cancel</button></form>
+        <button class="btn btn-primary btn-sm" @click="createTable()">Create Table</button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
+  <!-- ══ Edit Schema Modal ══ -->
+  <dialog id="edit-schema-modal" class="modal">
+    <div class="modal-box max-w-lg">
+      <div class="flex items-center justify-between mb-4">
+        <div>
+          <h3 class="font-bold text-sm">Edit Table Schema</h3>
+          <div class="text-[10px] opacity-40 mt-0.5 font-mono" x-text="selectedTable"></div>
+        </div>
+        <form method="dialog"><button class="btn btn-ghost btn-xs btn-square">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6l-12 12"/><path d="M6 6l12 12"/></svg>
+        </button></form>
+      </div>
+
+      <div x-show="schemaLoading" class="flex items-center justify-center py-8 opacity-40">
+        <span class="loading loading-spinner loading-sm"></span>
+      </div>
+
+      <div x-show="!schemaLoading">
+        <div class="text-[10px] font-bold uppercase tracking-wider opacity-50 mb-2">Fields</div>
+        <div class="space-y-1.5">
+          <template x-for="(field, idx) in schemaFields" :key="idx">
+            <div class="flex gap-1.5 items-center">
+              <input class="input input-bordered input-sm flex-1" placeholder="Field name" x-model="field.name" />
+              <select class="select select-bordered select-sm w-24 flex-shrink-0" x-model="field.type">
+                <option>string</option>
+                <option>int</option>
+                <option>float</option>
+                <option>bool</option>
+                <option>json</option>
+                <option>date</option>
+              </select>
+              <button class="btn btn-ghost btn-xs btn-square text-error flex-shrink-0"
+                      @click="schemaFields.length > 1 && schemaFields.splice(idx, 1)"
+                      :disabled="schemaFields.length <= 1">×</button>
+            </div>
+          </template>
+        </div>
+        <button class="btn btn-ghost btn-xs border-dashed border-base-300 gap-1 mt-2 w-full" @click="schemaFields.push({ name: '', type: 'string' })">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          Add field
+        </button>
+      </div>
+
+      <div class="divider my-3"></div>
+
+      <div class="modal-action flex items-center justify-between">
+        <button class="btn btn-ghost btn-sm text-error" @click="deleteAllRecords()">Delete all records</button>
+        <div class="flex gap-2">
+          <form method="dialog"><button class="btn btn-ghost btn-sm">Cancel</button></form>
+          <button class="btn btn-primary btn-sm" @click="saveSchema()">Save Schema</button>
+        </div>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop"><button>close</button></form>
+  </dialog>
+
+<script>
+document.addEventListener('alpine:init', () => {
+  Alpine.data('dataViewer', () => ({
+
+    // ── Core state ──
+    tables: [],
+    tablesLoading: true,
+    tableSearch: '',
+    selectedTable: null,
+    records: [],
+    recordsLoading: false,
+    totalRecords: 0,
+    columns: [],
+    selectedRecord: null,
+    recordSearch: '',
+    offset: 0,
+    pageSize: 100,
+    sortColumn: null,
+    sortDir: 'asc',
+    toasts: [],
+    editingRecord: null,
+    editFields: {},
+    days: 7,
+
+    // ── Loading progress ──
+    loadProgress: '',
+    loadedCount: 0,
+    loadTotalExpected: 0,
+    _loadAbort: null,
+
+    // ── Filter state ──
+    activeFilters: [],
+    filterMatchMode: 'all',
+    draftFilters: [],
+    draftMatchMode: 'all',
+
+    // ── Create table state ──
+    newTableName: '',
+    newTableFields: [{ name: '', type: 'string' }],
+
+    // ── Edit schema state ──
+    schemaFields: [],
+    schemaLoading: false,
+
+    // ── Add record state ──
+    addRecordLoading: false,
+    addRecordSaving: false,
+    addRecordKey: '',
+    addRecordFields: {},
+    addRecordSchemaFields: [],
+
+    // ── Edit record state ──
+    editRecordLoading: false,
+    editRecordSaving: false,
+    editRecordSchemaFields: [],
+    editOrphanedKeys: [],
+
+    // ── Filter operators ──
+    operators: {
+      string: [
+        { value: 'contains',     label: 'contains' },
+        { value: 'not_contains', label: 'does not contain' },
+        { value: 'equals',       label: 'equals' },
+        { value: 'not_equals',   label: 'not equals' },
+        { value: 'starts_with',  label: 'starts with' },
+        { value: 'ends_with',    label: 'ends with' },
+        { value: 'is_empty',     label: 'is empty' },
+        { value: 'is_not_empty', label: 'is not empty' },
+      ],
+      number: [
+        { value: 'equals',       label: '=' },
+        { value: 'not_equals',   label: '≠' },
+        { value: 'gt',           label: '>' },
+        { value: 'gte',          label: '>=' },
+        { value: 'lt',           label: '<' },
+        { value: 'lte',          label: '<=' },
+        { value: 'between',      label: 'between' },
+        { value: 'is_empty',     label: 'is empty' },
+        { value: 'is_not_empty', label: 'is not empty' },
+      ],
+      boolean: [
+        { value: 'equals',       label: 'is' },
+        { value: 'is_empty',     label: 'is empty' },
+        { value: 'is_not_empty', label: 'is not empty' },
+      ],
+      unknown: [
+        { value: 'contains',     label: 'contains' },
+        { value: 'not_contains', label: 'does not contain' },
+        { value: 'equals',       label: 'equals' },
+        { value: 'not_equals',   label: 'not equals' },
+        { value: 'is_empty',     label: 'is empty' },
+        { value: 'is_not_empty', label: 'is not empty' },
+      ],
+    },
+
+    columnType(col) {
+      if (col === '__key__') return 'string';
+      for (const r of this.records) {
+        const v = r.data[col];
+        if (v === null || v === undefined) continue;
+        if (typeof v === 'number') return 'number';
+        if (typeof v === 'boolean') return 'boolean';
+        if (typeof v === 'string') return 'string';
+      }
+      return 'unknown';
+    },
+
+    operatorsForFilter(f) {
+      if (!f.column) return this.operators.unknown;
+      return this.operators[this.columnType(f.column)] || this.operators.unknown;
+    },
+
+    operatorLabel(op) {
+      for (const group of Object.values(this.operators)) {
+        const found = group.find(o => o.value === op);
+        if (found) return found.label;
+      }
+      return op;
+    },
+
+    // ── Filter modal ──
+    openFilterModal() {
+      this.draftFilters = this.activeFilters.map(f => ({ ...f }));
+      this.draftMatchMode = this.filterMatchMode;
+      document.getElementById('filter-modal')?.showModal();
+    },
+
+    addDraftFilter() {
+      this.draftFilters.push({ column: '', operator: 'contains', value: '' });
+    },
+
+    removeDraftFilter(idx) {
+      this.draftFilters.splice(idx, 1);
+    },
+
+    clearDraftFilters() {
+      this.draftFilters = [];
+    },
+
+    onFilterColumnChange(f) {
+      const ops = this.operatorsForFilter(f);
+      if (ops.length > 0) f.operator = ops[0].value;
+      f.value = '';
+    },
+
+    applyFilters() {
+      this.activeFilters = this.draftFilters
+        .filter(f => f.column)
+        .map(f => ({ ...f }));
+      this.filterMatchMode = this.draftMatchMode;
+      this.offset = 0;
+      document.getElementById('filter-modal')?.close();
+    },
+
+    removeFilter(idx) {
+      this.activeFilters.splice(idx, 1);
+      this.offset = 0;
+    },
+
+    clearAllFilters() {
+      this.activeFilters = [];
+      this.offset = 0;
+    },
+
+    get activeFilterCount() {
+      return this.activeFilters.length;
+    },
+
+    matchesFilter(record, f) {
+      let raw;
+      if (f.column === '__key__') {
+        raw = record.key ?? '';
+      } else {
+        raw = record.data[f.column];
+      }
+
+      const op = f.operator;
+
+      if (op === 'is_empty')     return raw === null || raw === undefined || raw === '';
+      if (op === 'is_not_empty') return raw !== null && raw !== undefined && raw !== '';
+
+      if (raw === null || raw === undefined) return false;
+
+      const type = this.columnType(f.column);
+
+      if (type === 'number') {
+        const numVal = Number(raw);
+        if (op === 'between') {
+          const parts = String(f.value).split(',').map(s => Number(s.trim()));
+          return numVal >= parts[0] && numVal <= parts[1];
+        }
+        const cmp = Number(f.value);
+        if (op === 'equals')     return numVal === cmp;
+        if (op === 'not_equals') return numVal !== cmp;
+        if (op === 'gt')         return numVal > cmp;
+        if (op === 'gte')        return numVal >= cmp;
+        if (op === 'lt')         return numVal < cmp;
+        if (op === 'lte')        return numVal <= cmp;
+      }
+
+      if (type === 'boolean') {
+        const boolVal = String(raw).toLowerCase();
+        const cmp = String(f.value).toLowerCase();
+        if (op === 'equals') return boolVal === cmp;
+        return true;
+      }
+
+      const strVal = String(raw).toLowerCase();
+      const cmp    = String(f.value).toLowerCase();
+      if (op === 'contains')     return strVal.includes(cmp);
+      if (op === 'not_contains') return !strVal.includes(cmp);
+      if (op === 'equals')       return strVal === cmp;
+      if (op === 'not_equals')   return strVal !== cmp;
+      if (op === 'starts_with')  return strVal.startsWith(cmp);
+      if (op === 'ends_with')    return strVal.endsWith(cmp);
+
+      return true;
+    },
+
+    get filteredAndSortedRecords() {
+      let rows = this.records;
+
+      if (this.activeFilters.length > 0) {
+        rows = rows.filter(record => {
+          if (this.filterMatchMode === 'any') {
+            return this.activeFilters.some(f => this.matchesFilter(record, f));
+          } else {
+            return this.activeFilters.every(f => this.matchesFilter(record, f));
+          }
+        });
+      }
+
+      if (this.sortColumn) {
+        const col = this.sortColumn;
+        const dir = this.sortDir === 'asc' ? 1 : -1;
+        rows = [...rows].sort((a, b) => {
+          const va = a.data[col];
+          const vb = b.data[col];
+          if (va == null && vb == null) return 0;
+          if (va == null) return dir;
+          if (vb == null) return -dir;
+          if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+          return String(va).localeCompare(String(vb)) * dir;
+        });
+      }
+
+      return rows;
+    },
+
+    get filteredRecordCount() {
+      return this.filteredAndSortedRecords.length;
+    },
+
+    get paginatedRecords() {
+      return this.filteredAndSortedRecords.slice(this.offset, this.offset + this.pageSize);
+    },
+
+    get totalPages() {
+      return Math.max(1, Math.ceil(this.filteredRecordCount / this.pageSize));
+    },
+
+    get visiblePages() {
+      const total = this.totalPages;
+      const current = this.currentPage;
+      const pages = [];
+
+      if (total <= 7) {
+        for (let i = 1; i <= total; i++) pages.push(i);
+        return pages;
+      }
+
+      pages.push(1);
+      if (current > 3) pages.push('…');
+      const start = Math.max(2, current - 1);
+      const end = Math.min(total - 1, current + 1);
+      for (let i = start; i <= end; i++) pages.push(i);
+      if (current < total - 2) pages.push('…');
+      pages.push(total);
+
+      return pages;
+    },
+
+    goToPage(page) {
+      if (typeof page !== 'number') return;
+      const clamped = Math.max(1, Math.min(page, this.totalPages));
+      this.offset = (clamped - 1) * this.pageSize;
+    },
+
+    changePageSize(newSize) {
+      const firstVisibleRecord = this.offset;
+      this.pageSize = Number(newSize);
+      this.offset = Math.floor(firstVisibleRecord / this.pageSize) * this.pageSize;
+      if (this.offset >= this.filteredRecordCount) {
+        this.offset = Math.max(0, (this.totalPages - 1) * this.pageSize);
+      }
+    },
+
+    // ── Create table ──
+    async createTable() {
+        const name = this.newTableName.trim();
+        if (!name) { this.toast('Table name is required', 'error'); return; }
+        if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+            this.toast('Name must start with a letter and contain only letters, numbers, underscores', 'error');
+            return;
+        }
+
+        const fields = this.newTableFields.filter(f => f.name.trim());
+        if (!fields.length) { this.toast('Add at least one field', 'error'); return; }
+
+        try {
+            const res = await fetch(`/api/tenants/${this.$store.app.tenantId}/tables/${name}/schema`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fields: fields.map(f => ({ name: f.name.trim(), type: f.type })) }),
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                this.toast(err.message || 'Failed to create table', 'error');
+                return;
+            }
+            document.getElementById('create-table-modal')?.close();
+            this.toast(`Table "${name}" created`, 'success');
+            await this.loadTables();
+            this.selectTable(name);
+        } catch {
+            this.toast('Failed to create table', 'error');
+        }
+    },
+
+    // ── Edit schema ──
+    async openEditSchemaModal() {
+      if (!this.selectedTable) return;
+      this.schemaLoading = true;
+      this.schemaFields = [{ name: '', type: 'string' }];
+      document.getElementById('edit-schema-modal')?.showModal();
+
+      try {
+        const res = await fetch(`/api/tenants/${this.$store.app.tenantId}/tables/${this.selectedTable}/schema`);
+        const data = await res.json();
+        const fields = data.fields || [];
+        this.schemaFields = fields.length ? fields.map(f => ({ ...f })) : [{ name: '', type: 'string' }];
+      } catch {
+        this.schemaFields = [{ name: '', type: 'string' }];
+      }
+      this.schemaLoading = false;
+    },
+
+    async saveSchema() {
+        if (!this.selectedTable) return;
+        const fields = this.schemaFields.filter(f => f.name.trim());
+        if (!fields.length) { this.toast('Add at least one field', 'error'); return; }
+
+        const currentTable = this.tables.find(t => t.name === this.selectedTable);
+        if (currentTable && currentTable.count > 0) {
+            const newNames = new Set(fields.map(f => f.name.trim()));
+            const removed = this.columns.filter(c => !newNames.has(c));
+            if (removed.length > 0) {
+                if (!confirm(`Removing field${removed.length > 1 ? 's' : ''} "${removed.join('", "')}" will delete that data from all ${currentTable.count} records. Continue?`)) {
+                    return;
+                }
+            }
+        }
+
+        try {
+            const res = await fetch(`/api/tenants/${this.$store.app.tenantId}/tables/${this.selectedTable}/schema`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ fields: fields.map(f => ({ name: f.name.trim(), type: f.type })) }),
+            });
+            if (!res.ok) {
+                const err = await res.json();
+                this.toast(err.message || 'Failed to update schema', 'error');
+                return;
+            }
+            document.getElementById('edit-schema-modal')?.close();
+            this.toast('Schema updated', 'success');
+            await this.loadRecords();
+        } catch {
+            this.toast('Failed to update schema', 'error');
+        }
+    },
+
+    async deleteAllRecords() {
+      if (!this.selectedTable) return;
+      if (!confirm(`Delete ALL records from "${this.selectedTable}"? This cannot be undone.`)) return;
+      try {
+        await fetch(`/api/tenants/${this.$store.app.tenantId}/tables/${this.selectedTable}`, { method: 'DELETE' });
+        this.toast('All records deleted', 'success');
+        await this.loadRecords();
+        await this.loadTables();
+      } catch {
+        this.toast('Failed to delete records', 'error');
+      }
+    },
+
+    // ── Add record ──
+    async openAddRecordModal() {
+      if (!this.selectedTable) return;
+      this.addRecordLoading = true;
+      this.addRecordSaving = false;
+      this.addRecordKey = '';
+      this.addRecordFields = {};
+      this.addRecordSchemaFields = [];
+      document.getElementById('add-record-modal')?.showModal();
+
+      try {
+        const res = await fetch(`/api/tenants/${this.$store.app.tenantId}/tables/${this.selectedTable}/schema`);
+        const data = await res.json();
+        const fields = data.fields || [];
+        this.addRecordSchemaFields = fields;
+
+        const defaults = {};
+        for (const f of fields) {
+          switch (f.type) {
+            case 'int':    defaults[f.name] = 0; break;
+            case 'float':  defaults[f.name] = 0.0; break;
+            case 'bool':   defaults[f.name] = 'false'; break;
+            case 'json':   defaults[f.name] = ''; break;
+            case 'date':   defaults[f.name] = ''; break;
+            case 'string':
+            default:        defaults[f.name] = ''; break;
+          }
+        }
+        this.addRecordFields = defaults;
+      } catch {
+        this.addRecordSchemaFields = [];
+        this.addRecordFields = {};
+      }
+      this.addRecordLoading = false;
+    },
+
+    async submitAddRecord() {
+      if (!this.selectedTable || this.addRecordSchemaFields.length === 0) return;
+      this.addRecordSaving = true;
+
+      const data = {};
+      for (const field of this.addRecordSchemaFields) {
+        let val = this.addRecordFields[field.name];
+        switch (field.type) {
+          case 'int':
+            val = val === '' || val === null || val === undefined ? 0 : parseInt(val, 10);
+            if (isNaN(val)) val = 0;
+            break;
+          case 'float':
+            val = val === '' || val === null || val === undefined ? 0.0 : parseFloat(val);
+            if (isNaN(val)) val = 0.0;
+            break;
+          case 'bool':
+            val = String(val).toLowerCase() === 'true';
+            break;
+          case 'json':
+            if (typeof val === 'string' && val.trim()) {
+              try { val = JSON.parse(val); } catch {
+                this.toast(`Invalid JSON in field "${field.name}"`, 'error');
+                this.addRecordSaving = false;
+                return;
+              }
+            } else {
+              val = null;
+            }
+            break;
+          case 'date':
+            break;
+          case 'string':
+          default:
+            val = val == null ? '' : String(val);
+            break;
+        }
+        data[field.name] = val;
+      }
+
+      const body = { data };
+      if (this.addRecordKey.trim()) {
+        body.record_key = this.addRecordKey.trim();
+      }
+
+      try {
+        const res = await fetch(`/api/tenants/${this.$store.app.tenantId}/tables/${this.selectedTable}/records`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          this.toast(err.message || 'Failed to add record', 'error');
+          this.addRecordSaving = false;
+          return;
+        }
+        document.getElementById('add-record-modal')?.close();
+        this.toast('Record added', 'success');
+        await this.loadRecords();
+        await this.loadTables();
+      } catch {
+        this.toast('Failed to add record', 'error');
+      }
+      this.addRecordSaving = false;
+    },
+
+    // ── Edit record ──
+    editFieldIsLong(fieldName) {
+      const val = this.editFields[fieldName];
+      return typeof val === 'string' && val.length > 100;
+    },
+
+    async editRecord(record) {
+      this.editingRecord = record;
+      this.editRecordLoading = true;
+      this.editRecordSaving = false;
+      this.editRecordSchemaFields = [];
+      this.editOrphanedKeys = [];
+      this.editFields = {};
+      document.getElementById('edit-record-modal')?.showModal();
+
+      // Fetch schema so we know field types
+      let schemaFields = [];
+      try {
+        const res = await fetch(`/api/tenants/${this.$store.app.tenantId}/tables/${this.selectedTable}/schema`);
+        const data = await res.json();
+        schemaFields = data.fields || [];
+      } catch {
+        schemaFields = [];
+      }
+
+      // Build editFields from the record data, converting values for form binding
+      const recordData = JSON.parse(JSON.stringify(record.data));
+      const fields = {};
+      const schemaNameSet = new Set(schemaFields.map(f => f.name));
+
+      for (const sf of schemaFields) {
+        let val = recordData[sf.name];
+        switch (sf.type) {
+          case 'bool':
+            val = val === true || val === 'true' ? 'true' : 'false';
+            break;
+          case 'json':
+            if (val !== null && val !== undefined && typeof val === 'object') {
+              val = JSON.stringify(val, null, 2);
+            } else if (val === null || val === undefined) {
+              val = '';
+            } else {
+              val = String(val);
+            }
+            break;
+          case 'int':
+          case 'float':
+            if (val === null || val === undefined) val = 0;
+            break;
+          case 'date':
+            val = val == null ? '' : String(val);
+            break;
+          case 'string':
+          default:
+            val = val == null ? '' : String(val);
+            break;
+        }
+        fields[sf.name] = val;
+      }
+
+      // Collect orphaned keys (in record data but not in schema)
+      const orphaned = [];
+      for (const key of Object.keys(recordData)) {
+        if (!schemaNameSet.has(key)) {
+          orphaned.push(key);
+          const v = recordData[key];
+          fields[key] = (v !== null && v !== undefined && typeof v === 'object')
+            ? JSON.stringify(v, null, 2)
+            : (v == null ? '' : String(v));
+        }
+      }
+
+      this.editFields = fields;
+      this.editRecordSchemaFields = schemaFields;
+      this.editOrphanedKeys = orphaned;
+      this.editRecordLoading = false;
+    },
+
+    async saveRecord() {
+      if (!this.editingRecord) return;
+      this.editRecordSaving = true;
+
+      // Coerce values back to proper types based on schema
+      const data = {};
+      for (const sf of this.editRecordSchemaFields) {
+        let val = this.editFields[sf.name];
+        switch (sf.type) {
+          case 'int':
+            val = val === '' || val === null || val === undefined ? 0 : parseInt(val, 10);
+            if (isNaN(val)) val = 0;
+            break;
+          case 'float':
+            val = val === '' || val === null || val === undefined ? 0.0 : parseFloat(val);
+            if (isNaN(val)) val = 0.0;
+            break;
+          case 'bool':
+            val = String(val).toLowerCase() === 'true';
+            break;
+          case 'json':
+            if (typeof val === 'string' && val.trim()) {
+              try { val = JSON.parse(val); } catch {
+                this.toast(`Invalid JSON in field "${sf.name}"`, 'error');
+                this.editRecordSaving = false;
+                return;
+              }
+            } else {
+              val = null;
+            }
+            break;
+          case 'date':
+            break;
+          case 'string':
+          default:
+            val = val == null ? '' : String(val);
+            break;
+        }
+        data[sf.name] = val;
+      }
+
+      // Include orphaned keys as-is
+      for (const key of this.editOrphanedKeys) {
+        data[key] = this.editFields[key];
+      }
+
+      try {
+        const res = await fetch(`/api/tenants/${this.$store.app.tenantId}/tables/${this.selectedTable}/records/${this.editingRecord.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data }),
+        });
+        if (res.ok) {
+          this.toast('Record updated', 'success');
+          document.getElementById('edit-record-modal')?.close();
+          this.editingRecord = null;
+          await this.loadRecords();
+        } else {
+          const err = await res.json().catch(() => ({}));
+          this.toast(err.message || 'Update failed', 'error');
+        }
+      } catch {
+        this.toast('Could not reach server', 'error');
+      }
+      this.editRecordSaving = false;
+    },
+
+    // ── Computed ──
+    get filteredTables() {
+      const q = this.tableSearch.toLowerCase();
+      if (!q) return this.tables;
+      return this.tables.filter(t => t.name.toLowerCase().includes(q));
+    },
+
+    get currentPage() {
+      return Math.floor(this.offset / this.pageSize) + 1;
+    },
+
+    // ── Lifecycle ──
+    init() {
+      this.loadTables();
+    },
+
+    async loadTables() {
+      this.tablesLoading = true;
+      try {
+        const res = await fetch(`/api/tenants/${this.$store.app.tenantId}/tables`);
+        this.tables = await res.json();
+      } catch { this.tables = []; }
+      this.tablesLoading = false;
+    },
+
+    async selectTable(name) {
+      this.selectedTable = name;
+      this.selectedRecord = null;
+      this.offset = 0;
+      this.sortColumn = null;
+      this.recordSearch = '';
+      this.activeFilters = [];
+      this.draftFilters = [];
+      await this.loadRecords();
+    },
+
+    async loadRecords() {
+      if (!this.selectedTable) return;
+
+      if (this._loadAbort) this._loadAbort.abort();
+      this._loadAbort = new AbortController();
+      const signal = this._loadAbort.signal;
+
+      this.recordsLoading = true;
+      this.loadProgress = 'Loading records…';
+      this.loadedCount = 0;
+      this.loadTotalExpected = 0;
+
+      const allRecords = [];
+      const perPage = 1000;
+      let page = 1;
+      let totalPages = 1;
+
+      try {
+        while (page <= totalPages) {
+          if (signal.aborted) return;
+
+          const params = new URLSearchParams({
+            page,
+            per_page: perPage,
+            days: this.days,
+          });
+          const res = await fetch(
+            `/api/tenants/${this.$store.app.tenantId}/tables/${this.selectedTable}/records?${params}`,
+            { signal }
+          );
+
+          if (signal.aborted) return;
+
+          const data = await res.json();
+          const records = data.records || [];
+          allRecords.push(...records);
+
+          totalPages = data.pages || 1;
+          this.loadTotalExpected = data.total || 0;
+          this.loadedCount = allRecords.length;
+          this.loadProgress = `Loaded ${allRecords.length.toLocaleString()} of ${(data.total || 0).toLocaleString()} records…`;
+
+          page++;
+        }
+
+        if (signal.aborted) return;
+
+        this.records = allRecords;
+        this.totalRecords = allRecords.length;
+
+        const colSet = new Set();
+        this.records.forEach(r => {
+          Object.keys(r.data || {}).forEach(k => colSet.add(k));
+        });
+        this.columns = [...colSet];
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+        this.records = [];
+        this.totalRecords = 0;
+        this.columns = [];
+        this.toast('Failed to load records', 'error');
+      }
+
+      this.recordsLoading = false;
+      this.loadProgress = '';
+    },
+
+    selectRecord(record) {
+      this.selectedRecord = record;
+    },
+
+    formatCell(val) {
+      if (val === null || val === undefined) return '—';
+      if (typeof val === 'object') return JSON.stringify(val);
+      return String(val);
+    },
+
+    sortBy(col) {
+      if (this.sortColumn === col) {
+        this.sortDir = this.sortDir === 'asc' ? 'desc' : 'asc';
+      } else {
+        this.sortColumn = col;
+        this.sortDir = 'asc';
+      }
+    },
+
+    prevPage() {
+      this.offset = Math.max(0, this.offset - this.pageSize);
+    },
+
+    nextPage() {
+      if (this.offset + this.pageSize < this.filteredRecordCount) {
+        this.offset += this.pageSize;
+      }
+    },
+
+    async deleteRecord(record) {
+      if (!confirm(`Delete record #${record.id}?`)) return;
+      try {
+        await fetch(`/api/tenants/${this.$store.app.tenantId}/tables/${this.selectedTable}/records/${record.id}`, { method: 'DELETE' });
+        this.toast('Record deleted', 'error');
+        await this.loadRecords();
+        await this.loadTables();
+        if (this.selectedRecord?.id === record.id) this.selectedRecord = null;
+      } catch { this.toast('Failed to delete', 'error'); }
+    },
+
+    async deleteTable() {
+      if (!confirm(`Delete ALL records from "${this.selectedTable}"? This cannot be undone.`)) return;
+      try {
+        await fetch(`/api/tenants/${this.$store.app.tenantId}/tables/${this.selectedTable}`, { method: 'DELETE' });
+        this.toast(`Table "${this.selectedTable}" deleted`, 'error');
+        this.selectedTable = null;
+        this.records = [];
+        this.selectedRecord = null;
+        await this.loadTables();
+      } catch { this.toast('Failed to delete table', 'error'); }
+    },
+
+    exportTable() {
+      const data = this.filteredAndSortedRecords.map(r => ({ key: r.key, ...r.data }));
+      const json = JSON.stringify(data, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${this.selectedTable}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      this.toast('Exported as JSON', 'success');
+    },
+
+    copyRecord() {
+      if (!this.selectedRecord) return;
+      navigator.clipboard.writeText(JSON.stringify(this.selectedRecord.data, null, 2))
+        .then(() => this.toast('Copied', 'success'));
+    },
+
+    toast(msg, type = 'base') {
+      this.toasts.push({ msg, type });
+      setTimeout(() => this.toasts.shift(), 3000);
+    },
+
+  }));
+});
+</script>
+
+</div>
+{% endblock %}

@@ -1,0 +1,1825 @@
+{% extends "layouts/base.html" %}
+
+{% block head %}
+  {% import "helpers/src_macros.html" as macro %}
+  {{ macro.filehelper(charts=True) }}
+
+  <style>
+    .gs-item-content { height: 100%; }
+    .grid-stack { min-height: 400px; }
+    .grid-stack-placeholder > .placeholder-content {
+      border: 2px dashed oklch(var(--p) / 0.3) !important;
+      border-radius: 12px;
+      background: oklch(var(--p) / 0.03) !important;
+    }
+    /* Target scope styles */
+    .scope-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 8px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      border: 1px solid oklch(var(--b3));
+      background: oklch(var(--b1));
+      user-select: none;
+    }
+    .scope-toggle:hover {
+      border-color: oklch(var(--bc) / 0.2);
+    }
+    .scope-toggle.active {
+      border-color: oklch(var(--p) / 0.4);
+      background: oklch(var(--p) / 0.06);
+    }
+    .scope-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+      font-size: 10px;
+      padding: 1px 6px;
+      border-radius: 6px;
+      background: oklch(var(--p) / 0.1);
+      color: oklch(var(--p));
+      font-weight: 500;
+    }
+    .widget-target-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      margin-top: 6px;
+    }
+    .widget-target-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-size: 10px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      border: 1px solid oklch(var(--b3));
+      background: oklch(var(--b1));
+      user-select: none;
+    }
+    .widget-target-chip:hover {
+      border-color: oklch(var(--bc) / 0.2);
+    }
+    .widget-target-chip.selected {
+      border-color: oklch(var(--p) / 0.5);
+      background: oklch(var(--p) / 0.1);
+      color: oklch(var(--p));
+      font-weight: 500;
+    }
+    .widget-target-chip .chip-icon {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 8px;
+    }
+    .filter-scope-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 2px;
+      font-size: 9px;
+      padding: 0 4px;
+      border-radius: 4px;
+      background: oklch(var(--p) / 0.1);
+      color: oklch(var(--p));
+      font-weight: 500;
+      line-height: 16px;
+    }
+    .widget-filter-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: oklch(var(--wa));
+      flex-shrink: 0;
+    }
+  </style>
+{% endblock %}
+
+{% block page_header %}{% endblock %}
+{% block content %}
+<div class="max-w-7xl mx-auto" x-data="dashboardView" x-cloak>
+
+  <!-- ══════ Topbar ══════ -->
+  <div class="navbar bg-base-100 border-b border-base-300 px-4 min-h-[52px] h-[52px] shadow-sm flex-shrink-0">
+    <a href="/dashboards" class="btn btn-ghost btn-sm gap-1 text-xs opacity-60 hover:opacity-100">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="15 18 9 12 15 6"/></svg>
+      Dashboards
+    </a>
+    <span class="text-xs opacity-20 mx-1">/</span>
+    <input x-model="dashboard.name" @input="autoSave()"
+           class="input input-ghost input-sm font-semibold text-sm w-48 focus:input-bordered focus:input-primary"
+           placeholder="Dashboard name" />
+    <div class="flex-1"></div>
+    <span class="text-[10px] opacity-40 mr-2"
+          x-text="saveIndicator === 'saving' ? 'Saving…' : saveIndicator === 'saved' ? 'Saved' : ''"></span>
+
+    <button class="btn btn-sm gap-1.5 mr-1" @click="openFilterModal()"
+            :class="globalFilters.length ? 'btn-warning btn-outline' : 'btn-ghost opacity-50'">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+      <span x-text="globalFilters.length ? globalFilters.length + ' filter' + (globalFilters.length > 1 ? 's' : '') + ' active' : 'Filters'"></span>
+    </button>
+
+    <button class="btn btn-ghost btn-sm text-xs opacity-50 hover:opacity-100 mr-1" @click="refreshAll()" title="Refresh">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 2v6h-6"/><path d="M3 12a9 9 0 0115-6.7L21 8"/><path d="M3 22v-6h6"/><path d="M21 12a9 9 0 01-15 6.7L3 16"/></svg>
+    </button>
+
+    <button class="btn btn-ghost btn-sm text-xs opacity-50 hover:opacity-100 mr-1" @click="exportPDF()" title="Export PDF">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="M9 15l3 3 3-3"/></svg>
+      PDF
+    </button>
+
+    <!-- ══ ADDED: first-class date range picker ══ -->
+    <div class="flex items-center gap-1.5 border border-base-300 rounded-lg px-2 h-8 bg-base-200/40 mr-1">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="opacity-40 flex-shrink-0">
+        <rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>
+      </svg>
+      <select class="select select-ghost select-xs text-xs bg-transparent focus:outline-none min-h-0 h-auto pr-5 font-medium"
+              x-model="dateRangeDays" @change="onDateRangeChange()">
+        <option value="7">Last 7 days</option>
+        <option value="14">Last 14 days</option>
+        <option value="30">Last 30 days</option>
+        <option value="45">Last 45 days</option>
+      </select>
+    </div>
+
+    <div class="dropdown dropdown-end">
+      <label tabindex="0" class="btn btn-primary btn-sm gap-1">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+        Add Widget
+      </label>
+      <ul tabindex="0" class="dropdown-content menu bg-base-100 shadow-xl border border-base-300 rounded-lg w-52 p-1 z-[9999]">
+        <li><button class="text-xs gap-2" @click="openAddChart('bar')">📊 Bar Chart</button></li>
+        <li><button class="text-xs gap-2" @click="openAddChart('line')">📈 Line Chart</button></li>
+        <li><button class="text-xs gap-2" @click="openAddChart('pie')">🥧 Pie Chart</button></li>
+        <li><button class="text-xs gap-2" @click="openAddChart('doughnut')">🍩 Doughnut</button></li>
+        <li><button class="text-xs gap-2" @click="openAddChart('stat')">🔢 Stat Number</button></li>
+        <li><button class="text-xs gap-2" @click="openAddChart('table')">📋 Data Table</button></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Active filters bar -->
+  <div x-show="globalFilters.length > 0"
+       class="bg-warning/10 border-b border-warning/20 px-4 py-1.5 flex items-center gap-2 flex-shrink-0" x-cloak>
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-warning flex-shrink-0">
+      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+    <div class="flex items-center gap-1.5 flex-1 overflow-x-auto">
+      <template x-for="(f, i) in globalFilters" :key="'gfb-' + i">
+        <span x-show="f.field && f.value" class="flex items-center gap-1.5 flex-shrink-0">
+          <span class="badge badge-warning badge-outline badge-sm gap-1">
+            <span x-text="f.field + ' ' + {eq:'=',neq:'≠',gt:'>',lt:'<',contains:'∋'}[f.op] + ' ' + f.value"></span>
+            <span x-show="f.scope === 'targeted'" class="filter-scope-indicator" x-text="(f.targets || []).length + ' widget' + ((f.targets || []).length !== 1 ? 's' : '')"></span>
+          </span>
+        </span>
+      </template>
+    </div>
+    <button class="btn btn-ghost btn-xs text-warning opacity-60 hover:opacity-100" @click="openFilterModal()">Edit</button>
+    <button class="btn btn-ghost btn-xs text-error opacity-40 hover:opacity-100" @click="globalFilters = []; applyGlobalFilters()">Clear</button>
+  </div>
+
+  <!-- Loading -->
+  <div x-show="loading" class="flex-1 flex items-center justify-center">
+    <span class="loading loading-spinner loading-md text-primary"></span>
+  </div>
+
+  <!-- ══════ Grid ══════ -->
+  <div x-show="!loading" class="flex-1 overflow-y-auto p-6" x-cloak id="dashboard-grid-area">
+    <div x-show="(dashboard.widgets || []).length === 0" class="flex flex-col items-center justify-center py-20 opacity-40">
+      <div class="text-5xl mb-3">📊</div>
+      <div class="text-sm font-medium mb-1">No widgets yet</div>
+      <div class="text-xs">Click "Add Widget" to get started</div>
+    </div>
+    <div class="grid-stack" id="grid-stack"></div>
+  </div>
+
+  <!-- ══════ Global Filter Modal ══════ -->
+  <dialog class="modal" :class="filterModal.open ? 'modal-open' : ''">
+    <div class="modal-box max-w-3xl">
+      <div class="flex items-center justify-between mb-4">
+        <div class="flex items-center gap-2">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-warning"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          <h3 class="font-bold text-sm">Dashboard Filters</h3>
+        </div>
+        <button class="btn btn-ghost btn-xs btn-square" @click="filterModal.open = false">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="text-xs mb-4">Create filters and choose which widgets they affect. Changes take effect when you click Apply.</div>
+      <div class="space-y-3 mb-4">
+        <template x-for="(f, i) in filterModal.draft" :key="'fd-' + i">
+          <div class="p-3 rounded-xl bg-base-200/50 border border-base-300">
+            <!-- Filter condition row -->
+            <div class="flex items-center gap-2">
+              <div class="flex-1 space-y-1.5">
+                <select class="select select-bordered select-sm w-full" x-model="f.field">
+                  <option value="">Select field…</option>
+                  <template x-for="field in allFields" :key="'fdf-' + field">
+                    <option :value="field" x-text="field"></option>
+                  </template>
+                </select>
+                <div class="flex gap-1.5">
+                  <select class="select select-bordered select-sm w-24" x-model="f.op">
+                    <option value="eq">equals</option>
+                    <option value="neq">not equal</option>
+                    <option value="gt">greater than</option>
+                    <option value="lt">less than</option>
+                    <option value="contains">contains</option>
+                  </select>
+                  <input class="input input-bordered input-sm flex-1" x-model="f.value" placeholder="Value…" />
+                </div>
+              </div>
+              <button class="btn btn-ghost btn-sm btn-square text-error opacity-40 hover:opacity-100"
+                      @click="filterModal.draft.splice(i, 1)">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/></svg>
+              </button>
+            </div>
+
+            <!-- Scope selector -->
+            <div class="mt-3 pt-3 border-t border-base-300/50">
+              <div class="flex items-center gap-2 mb-2">
+                <span class="text-[10px] font-semibold uppercase tracking-wider opacity-40">Applies to</span>
+              </div>
+              <div class="flex gap-2 mb-2">
+                <button class="scope-toggle" :class="(f.scope || 'all') === 'all' ? 'active' : ''"
+                        @click="f.scope = 'all'; f.targets = [];">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>
+                  All widgets
+                </button>
+                <button class="scope-toggle" :class="f.scope === 'targeted' ? 'active' : ''"
+                        @click="f.scope = 'targeted'; if(!f.targets) f.targets = [];">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                  Specific widgets
+                  <span x-show="f.scope === 'targeted' && (f.targets || []).length > 0" class="scope-badge" x-text="(f.targets || []).length"></span>
+                </button>
+              </div>
+
+              <!-- Widget target list - only shown when targeted scope -->
+              <div x-show="f.scope === 'targeted'" class="widget-target-list" x-cloak>
+                <template x-for="w in (dashboard.widgets || [])" :key="'wt-' + i + '-' + w.id">
+                  <button class="widget-target-chip"
+                          :class="(f.targets || []).includes(w.id) ? 'selected' : ''"
+                          @click="toggleFilterTarget(f, w.id)">
+                    <span class="chip-icon" :style="'background: ' + getChartTypeColor(w.chart_type)"
+                          x-text="getChartTypeIcon(w.chart_type)"></span>
+                    <span x-text="w.title || 'Untitled'"></span>
+                    <svg x-show="(f.targets || []).includes(w.id)" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg>
+                  </button>
+                </template>
+                <div x-show="(dashboard.widgets || []).length === 0" class="text-[10px] opacity-30 py-2">
+                  No widgets to target — add widgets first
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+      </div>
+      <button class="btn btn-ghost btn-sm border-dashed border-base-300 w-full gap-1 mb-4"
+              @click="filterModal.draft.push({field: '', op: 'eq', value: '', scope: 'all', targets: []})">+ Add Filter</button>
+      <div x-show="filterModal.draft.length === 0" class="text-center py-6 text-sm">No filters — all data will be shown</div>
+      <div class="modal-action">
+        <button x-show="filterModal.draft.length" class="btn btn-ghost btn-sm text-error mr-auto" @click="filterModal.draft = []">Clear All</button>
+        <button class="btn btn-ghost btn-sm" @click="filterModal.open = false">Cancel</button>
+        <button class="btn btn-warning btn-sm gap-1" @click="applyFilterDraft()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          Apply Filters
+        </button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop" @click="filterModal.open = false"><button>close</button></form>
+  </dialog>
+
+  <!-- ══════ Chart Config Modal ══════ -->
+  <dialog class="modal" :class="cm.open ? 'modal-open' : ''">
+    <div class="modal-box max-w-5xl p-0 flex flex-col" style="height: 88vh;">
+
+      <!-- Header with steps -->
+      <div class="px-5 py-3 border-b border-base-300 flex-shrink-0">
+        <div class="flex items-center justify-between mb-3">
+          <div class="flex items-center gap-2">
+            <span class="font-bold text-sm" x-text="cm.editId ? 'Edit Widget' : 'New Widget'"></span>
+            <span class="badge badge-sm badge-ghost capitalize" x-text="cm.chartType"></span>
+          </div>
+          <button class="btn btn-ghost btn-xs btn-square" @click="cm.open = false">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+        <div class="flex items-center gap-8">
+          <template x-for="(step, si) in cmSteps" :key="si">
+            <button class="flex items-center gap-2.5 text-xs py-1 px-1 transition-all"
+                    :class="cm.step === si ? 'opacity-100 font-semibold' : si < cm.step ? 'opacity-50 hover:opacity-80' : 'opacity-30'"
+                    @click="if (si <= cm.step || canAdvance(si)) cm.step = si">
+              <div class="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold border-2 transition-all"
+                   :class="cm.step === si ? 'border-primary bg-primary text-primary-content' : si < cm.step ? 'border-success bg-success text-success-content' : 'border-base-300 bg-base-200 text-base-content/40'"
+                   x-text="si + 1"></div>
+              <span x-text="step"></span>
+            </button>
+          </template>
+        </div>
+      </div>
+
+      <div class="flex flex-1 overflow-hidden">
+        <!-- LEFT: Config panel -->
+        <div class="w-[340px] flex-shrink-0 border-r border-base-300 overflow-y-auto p-5">
+
+          <!-- ── Step 0: Data Source ── -->
+          <div x-show="cm.step === 0" class="space-y-4">
+            <div>
+              <div class="text-sm font-bold mb-1">Choose your data</div>
+              <div class="text-[11px] opacity-50 mb-4">Select the table to visualize</div>
+            </div>
+            <template x-for="t in tables" :key="t.name">
+              <div class="card card-bordered p-3 cursor-pointer transition-all"
+                   :class="cm.tableName === t.name ? 'border-primary bg-primary/5' : 'hover:border-base-content/20'"
+                   @click="cm.tableName = t.name; onTableChange(); cm.step = 1;">
+                <div class="flex items-center justify-between">
+                  <div>
+                    <div class="text-xs font-semibold" x-text="t.name"></div>
+                    <div class="text-[10px] opacity-40" x-text="t.count + ' records'"></div>
+                  </div>
+                  <svg x-show="cm.tableName === t.name" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-primary"><polyline points="20 6 9 17 4 12"/></svg>
+                </div>
+              </div>
+            </template>
+          </div>
+
+          <!-- ── Step 1: Configure ── -->
+          <div x-show="cm.step === 1" class="space-y-4">
+            <div>
+              <div class="text-sm font-bold mb-1">Configure</div>
+              <div class="text-[11px] opacity-50 mb-4">Fields, grouping and aggregation</div>
+            </div>
+
+            <div class="form-control">
+              <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Title</span></label>
+              <input class="input input-bordered input-sm" x-model="cm.title" @input="debouncedPreview()" placeholder="Widget title" />
+            </div>
+
+            <div class="form-control" x-show="!['stat','table'].includes(cm.chartType)">
+              <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Type</span></label>
+              <div class="grid grid-cols-4 gap-1">
+                <template x-for="t in ['bar','line','pie','doughnut']" :key="t">
+                  <button class="btn btn-xs capitalize"
+                          :class="cm.chartType === t ? 'btn-primary' : 'btn-ghost border border-base-300'"
+                          @click="cm.chartType = t; debouncedPreview()" x-text="t"></button>
+                </template>
+              </div>
+            </div>
+
+            <div class="form-control" x-show="!['stat','table'].includes(cm.chartType)">
+              <label class="label pb-1">
+                <span class="label-text text-[11px] font-semibold"
+                      x-text="['pie','doughnut'].includes(cm.chartType) ? 'Label Field' : 'X-Axis'"></span>
+              </label>
+              <select class="select select-bordered select-sm" x-model="cm.xField" @change="debouncedPreview()">
+                <option value="">Select…</option>
+                <template x-for="f in cm.fields" :key="f">
+                  <option :value="f" x-text="f"></option>
+                </template>
+              </select>
+            </div>
+
+            <div class="form-control" x-show="cm.chartType !== 'table'">
+              <label class="label pb-1">
+                <span class="label-text text-[11px] font-semibold"
+                      x-text="cm.chartType === 'stat' ? 'Value Field' : 'Y-Axis'"></span>
+              </label>
+              <select class="select select-bordered select-sm" x-model="cm.yField" @change="debouncedPreview()">
+                <option value="__count__">Count (records)</option>
+                <template x-for="f in cm.fields" :key="'y-' + f">
+                  <option :value="f" x-text="f"></option>
+                </template>
+              </select>
+            </div>
+
+            <div class="form-control" x-show="cm.chartType !== 'table'">
+              <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Aggregation</span></label>
+              <select class="select select-bordered select-sm" x-model="cm.aggregation" @change="debouncedPreview()">
+                <option value="count">Count</option>
+                <option value="sum">Sum</option>
+                <option value="average">Average</option>
+                <option value="min">Min</option>
+                <option value="max">Max</option>
+              </select>
+            </div>
+
+            <div class="form-control" x-show="!['pie','doughnut','stat','table'].includes(cm.chartType)">
+              <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Group By</span></label>
+              <select class="select select-bordered select-sm"
+                      @change="if ($event.target.value && !cm.groupBy.includes($event.target.value)) { cm.groupBy.push($event.target.value); debouncedPreview(); } $event.target.value = '';">
+                <option value="">Add group…</option>
+                <template x-for="f in cm.fields.filter(ff => ff !== cm.xField && !cm.groupBy.includes(ff))" :key="'gb-' + f">
+                  <option :value="f" x-text="f"></option>
+                </template>
+              </select>
+              <div class="flex flex-wrap gap-1 mt-1.5">
+                <template x-for="(g, gi) in cm.groupBy" :key="'gbv-' + gi">
+                  <span class="badge badge-sm gap-1">
+                    <span x-text="g"></span>
+                    <button class="opacity-60 hover:opacity-100" @click="cm.groupBy.splice(gi, 1); debouncedPreview()">×</button>
+                  </span>
+                </template>
+              </div>
+            </div>
+
+            <div class="form-control" x-show="cm.chartType === 'table'">
+              <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Columns</span></label>
+              <div class="flex flex-col gap-1 max-h-[200px] overflow-y-auto">
+                <template x-for="f in cm.fields" :key="'tc-' + f">
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" class="checkbox checkbox-xs checkbox-primary"
+                           :checked="cm.tableColumns.includes(f)"
+                           @change="toggleArr(cm.tableColumns, f); debouncedPreview()" />
+                    <span class="text-xs" x-text="f"></span>
+                  </label>
+                </template>
+              </div>
+            </div>
+
+            <div x-show="cm.chartType === 'stat'" class="space-y-3">
+              <div class="form-control">
+                <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Filter Field</span></label>
+                <select class="select select-bordered select-sm" x-model="cm.xField" @change="debouncedPreview()">
+                  <option value="">All records</option>
+                  <template x-for="f in cm.fields" :key="'sf-' + f">
+                    <option :value="f" x-text="f"></option>
+                  </template>
+                </select>
+              </div>
+              <div class="form-control" x-show="cm.xField">
+                <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Filter Value</span></label>
+                <input class="input input-bordered input-sm" x-model="cm.filterValue" @input="debouncedPreview()" placeholder="equals…" />
+              </div>
+            </div>
+
+            <!-- ══ Advanced Options ══ -->
+            <div x-show="cm.chartType !== 'table'" class="border-t border-base-300 pt-3 mt-3">
+              <button class="btn btn-ghost btn-xs w-full gap-1 opacity-50 hover:opacity-100"
+                      @click="cm.showAdvanced = !cm.showAdvanced">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                     class="transition-transform" :class="cm.showAdvanced ? 'rotate-90' : ''">
+                  <polyline points="9 18 15 12 9 6"/></svg>
+                Advanced Options
+              </button>
+
+              <div x-show="cm.showAdvanced" x-cloak class="space-y-3 mt-3">
+                <div class="text-[10px] font-bold uppercase tracking-wider opacity-40">Legend</div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div class="form-control">
+                    <label class="label pb-0.5"><span class="label-text text-[10px]">Show</span></label>
+                    <select class="select select-bordered select-xs" x-model="cm.legendDisplay" @change="debouncedPreview()">
+                      <option value="auto">Auto</option>
+                      <option value="true">Always</option>
+                      <option value="false">Hidden</option>
+                    </select>
+                  </div>
+                  <div class="form-control">
+                    <label class="label pb-0.5"><span class="label-text text-[10px]">Position</span></label>
+                    <select class="select select-bordered select-xs" x-model="cm.legendPosition" @change="debouncedPreview()">
+                      <option value="top">Top</option>
+                      <option value="bottom">Bottom</option>
+                      <option value="left">Left</option>
+                      <option value="right">Right</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="text-[10px] font-bold uppercase tracking-wider opacity-40 mt-2">Chart Subtitle</div>
+                <div class="grid grid-cols-[1fr_auto] gap-2">
+                  <input class="input input-bordered input-xs" x-model="cm.chartTitle"
+                         @change="debouncedPreview()" placeholder="Subtitle text" />
+                  <select class="select select-bordered select-xs w-20" x-model="cm.chartTitlePosition" @change="debouncedPreview()">
+                    <option value="top">Top</option>
+                    <option value="bottom">Bottom</option>
+                  </select>
+                </div>
+
+                <div class="text-[10px] font-bold uppercase tracking-wider opacity-40 mt-2">Tooltip</div>
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input type="checkbox" class="checkbox checkbox-xs checkbox-primary"
+                         x-model="cm.tooltipEnabled" @change="debouncedPreview()" />
+                  <span class="text-[11px]">Show on hover</span>
+                </label>
+
+                <div class="text-[10px] font-bold uppercase tracking-wider opacity-40 mt-2">Animation</div>
+                <div class="grid grid-cols-2 gap-2">
+                  <div class="form-control">
+                    <label class="label pb-0.5"><span class="label-text text-[10px]">Duration (ms)</span></label>
+                    <input type="number" class="input input-bordered input-xs"
+                           x-model.number="cm.animationDuration" @change="debouncedPreview()" min="0" max="5000" step="100" />
+                  </div>
+                  <div class="form-control">
+                    <label class="label pb-0.5"><span class="label-text text-[10px]">Easing</span></label>
+                    <select class="select select-bordered select-xs" x-model="cm.animationEasing" @change="debouncedPreview()">
+                      <option value="linear">Linear</option>
+                      <option value="easeInQuad">Ease In</option>
+                      <option value="easeOutQuad">Ease Out</option>
+                      <option value="easeInOutQuad">Ease In/Out</option>
+                      <option value="easeOutQuart">Ease Out Quart</option>
+                      <option value="easeOutBounce">Bounce</option>
+                      <option value="easeOutElastic">Elastic</option>
+                      <option value="easeOutBack">Back</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div x-show="!['pie','doughnut','stat'].includes(cm.chartType)">
+                  <div class="text-[10px] font-bold uppercase tracking-wider opacity-40 mt-2">Axes</div>
+                  <div class="grid grid-cols-2 gap-2 mt-1">
+                    <div class="form-control">
+                      <label class="label pb-0.5"><span class="label-text text-[10px]">X Label</span></label>
+                      <input class="input input-bordered input-xs" x-model="cm.xAxisLabel"
+                             @change="debouncedPreview()" placeholder="X axis" />
+                    </div>
+                    <div class="form-control">
+                      <label class="label pb-0.5"><span class="label-text text-[10px]">Y Label</span></label>
+                      <input class="input input-bordered input-xs" x-model="cm.yAxisLabel"
+                             @change="debouncedPreview()" placeholder="Y axis" />
+                    </div>
+                  </div>
+                  <div class="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" class="checkbox checkbox-xs" x-model="cm.xGridDisplay" @change="debouncedPreview()" />
+                      <span class="text-[10px]">X grid lines</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" class="checkbox checkbox-xs" x-model="cm.yGridDisplay" @change="debouncedPreview()" />
+                      <span class="text-[10px]">Y grid lines</span>
+                    </label>
+                    <label class="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" class="checkbox checkbox-xs" x-model="cm.beginAtZero" @change="debouncedPreview()" />
+                      <span class="text-[10px]">Begin at zero</span>
+                    </label>
+                    <div class="form-control">
+                      <label class="label pb-0"><span class="label-text text-[10px]">X rotation</span></label>
+                      <input type="number" class="input input-bordered input-xs"
+                             x-model.number="cm.xTickRotation" @change="debouncedPreview()" min="0" max="90" />
+                    </div>
+                  </div>
+                </div>
+
+                <div class="text-[10px] font-bold uppercase tracking-wider opacity-40 mt-2">Dataset Style</div>
+                <div class="grid grid-cols-2 gap-2 mt-1">
+                  <div class="form-control">
+                    <label class="label pb-0.5"><span class="label-text text-[10px]">Border width</span></label>
+                    <input type="number" class="input input-bordered input-xs"
+                           x-model.number="cm.borderWidth" @change="debouncedPreview()" min="0" max="10" />
+                  </div>
+                  <div class="form-control" x-show="!['pie','doughnut'].includes(cm.chartType)">
+                    <label class="label pb-0.5"><span class="label-text text-[10px]">Border radius</span></label>
+                    <input type="number" class="input input-bordered input-xs"
+                           x-model.number="cm.borderRadius" @change="debouncedPreview()" min="0" max="20" />
+                  </div>
+                </div>
+
+                <div x-show="cm.chartType === 'line'" class="space-y-2 mt-1">
+                  <div class="form-control">
+                    <label class="label pb-0.5">
+                      <span class="label-text text-[10px]">Line tension
+                        <span class="opacity-40" x-text="cm.tension"></span></span>
+                    </label>
+                    <input type="range" class="range range-xs range-primary" min="0" max="1" step="0.05"
+                           x-model.number="cm.tension" @change="debouncedPreview()" />
+                  </div>
+                  <div class="grid grid-cols-2 gap-2">
+                    <div class="form-control">
+                      <label class="label pb-0.5"><span class="label-text text-[10px]">Point radius</span></label>
+                      <input type="number" class="input input-bordered input-xs"
+                             x-model.number="cm.pointRadius" @change="debouncedPreview()" min="0" max="10" />
+                    </div>
+                    <div class="form-control">
+                      <label class="label pb-0.5"><span class="label-text text-[10px]">Point style</span></label>
+                      <select class="select select-bordered select-xs" x-model="cm.pointStyle" @change="debouncedPreview()">
+                        <option value="circle">Circle</option>
+                        <option value="rect">Square</option>
+                        <option value="triangle">Triangle</option>
+                        <option value="star">Star</option>
+                        <option value="cross">Cross</option>
+                        <option value="dash">Dash</option>
+                        <option value="false">None</option>
+                      </select>
+                    </div>
+                  </div>
+                  <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" class="checkbox checkbox-xs" x-model="cm.fill" @change="debouncedPreview()" />
+                    <span class="text-[10px]">Fill area under line</span>
+                  </label>
+                </div>
+
+                <div x-show="cm.chartType === 'bar'" class="space-y-2 mt-1">
+                  <div class="form-control">
+                    <label class="label pb-0.5">
+                      <span class="label-text text-[10px]">Bar width
+                        <span class="opacity-40" x-text="Math.round(cm.barPercentage * 100) + '%'"></span></span>
+                    </label>
+                    <input type="range" class="range range-xs range-primary" min="0.1" max="1" step="0.05"
+                           x-model.number="cm.barPercentage" @change="debouncedPreview()" />
+                  </div>
+                  <div class="form-control">
+                    <label class="label pb-0.5">
+                      <span class="label-text text-[10px]">Category width
+                        <span class="opacity-40" x-text="Math.round(cm.categoryPercentage * 100) + '%'"></span></span>
+                    </label>
+                    <input type="range" class="range range-xs range-primary" min="0.1" max="1" step="0.05"
+                           x-model.number="cm.categoryPercentage" @change="debouncedPreview()" />
+                  </div>
+                </div>
+
+                <div x-show="['pie','doughnut'].includes(cm.chartType)" class="form-control mt-1">
+                  <label class="label pb-0.5"><span class="label-text text-[10px]">Cutout (hole size)</span></label>
+                  <input class="input input-bordered input-xs" x-model="cm.cutout"
+                         @change="debouncedPreview()" placeholder="50% for doughnut" />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- ── Step 2: Style & Filters ── -->
+          <div x-show="cm.step === 2" class="space-y-4">
+            <div>
+              <div class="text-sm font-bold mb-1">Style & Filters</div>
+              <div class="text-[11px] opacity-50 mb-4">Appearance and widget-level filters</div>
+            </div>
+
+            <div class="form-control" x-show="!['stat','table'].includes(cm.chartType)">
+              <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Sort</span></label>
+              <select class="select select-bordered select-sm" x-model="cm.sort" @change="debouncedPreview()">
+                <option value="none">Default</option>
+                <option value="value_desc">Value ↓</option>
+                <option value="value_asc">Value ↑</option>
+                <option value="label_asc">Label A→Z</option>
+                <option value="label_desc">Label Z→A</option>
+              </select>
+            </div>
+
+            <div class="form-control">
+              <label class="label pb-1">
+                <span class="label-text text-[11px] font-semibold"
+                      x-text="cm.chartType === 'table' ? 'Row Limit' : 'Max Items'"></span>
+              </label>
+              <input type="number" class="input input-bordered input-sm"
+                     x-model.number="cm.limit" @input="debouncedPreview()" min="0" max="500" placeholder="All" />
+            </div>
+
+            <div class="form-control" x-show="cm.chartType !== 'table'">
+              <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Color Theme</span></label>
+              <div class="flex gap-2 flex-wrap">
+                <template x-for="key in Object.keys(colorThemes)" :key="key">
+                  <button class="w-8 h-8 rounded-lg border-2 flex items-center justify-center gap-px transition-all"
+                          :class="cm.colorTheme === key ? 'border-primary scale-110 shadow-sm' : 'border-base-300 opacity-60 hover:opacity-100'"
+                          @click="cm.colorTheme = key; debouncedPreview()" :title="key">
+                    <div class="w-2 h-5 rounded-sm" :style="'background:' + colorThemes[key][0]"></div>
+                    <div class="w-2 h-5 rounded-sm" :style="'background:' + colorThemes[key][1]"></div>
+                    <div class="w-2 h-5 rounded-sm" :style="'background:' + colorThemes[key][2]"></div>
+                  </button>
+                </template>
+              </div>
+            </div>
+
+            <div class="form-control" x-show="cm.xField && !['stat','table'].includes(cm.chartType)">
+              <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Value Colors</span></label>
+              <div class="text-[10px] opacity-40 mb-2">Override for specific values</div>
+              <div class="space-y-1.5 max-h-[200px] overflow-y-auto">
+                <template x-for="label in getUniqueLabels()" :key="'vc-' + label">
+                  <div class="flex items-center gap-2 rounded-lg px-2 py-1 hover:bg-base-200">
+                    <span class="text-[11px] flex-1 truncate" x-text="label"></span>
+                    <input type="color" class="w-6 h-6 rounded cursor-pointer border border-base-300"
+                           :value="cm.colorMap[label] || getDefaultColor(label)"
+                           @change="cm.colorMap[label] = $event.target.value; debouncedPreview()" />
+                    <button x-show="cm.colorMap[label]"
+                            class="btn btn-ghost btn-xs btn-square opacity-40 hover:opacity-100"
+                            @click="delete cm.colorMap[label]; debouncedPreview()">×</button>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <div class="border-t border-base-300 pt-4 mt-4">
+              <div class="text-[11px] font-semibold mb-2">Chart Filters</div>
+              <div class="text-[10px] opacity-40 mb-3">Only affect this widget</div>
+              <template x-for="(f, i) in cm.filters" :key="'cf-' + i">
+                <div class="flex items-center gap-1 mb-2">
+                  <select class="select select-bordered select-xs flex-1" x-model="f.field" @change="debouncedPreview()">
+                    <option value="">Field…</option>
+                    <template x-for="ff in cm.fields" :key="'cff-' + ff">
+                      <option :value="ff" x-text="ff"></option>
+                    </template>
+                  </select>
+                  <select class="select select-bordered select-xs w-14" x-model="f.op" @change="debouncedPreview()">
+                    <option value="eq">=</option>
+                    <option value="neq">≠</option>
+                    <option value="gt">></option>
+                    <option value="lt"><</option>
+                    <option value="contains">∋</option>
+                  </select>
+                  <input class="input input-bordered input-xs flex-1" x-model="f.value"
+                         @input="debouncedPreview()" placeholder="Value" />
+                  <button class="btn btn-ghost btn-xs btn-square text-error"
+                          @click="cm.filters.splice(i, 1); debouncedPreview()">×</button>
+                </div>
+              </template>
+              <button class="btn btn-ghost btn-xs border-dashed border-base-300 w-full gap-1"
+                      @click="cm.filters.push({field: '', op: 'eq', value: ''})">+ Add filter</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT: Preview -->
+        <div class="flex-1 flex flex-col overflow-hidden bg-base-200/50 p-5">
+          <div x-show="!cm.tableName" class="flex-1 flex items-center justify-center opacity-30">
+            <div class="text-center"><div class="text-3xl mb-2">📋</div><div class="text-xs">Select a data table</div></div>
+          </div>
+          <div x-show="cm.tableName && !['stat','table'].includes(cm.chartType)"
+               class="flex-1 bg-base-100 rounded-xl border border-base-300 p-4 flex flex-col">
+            <div class="text-xs font-semibold mb-2 opacity-60" x-text="cm.title || 'Untitled'"></div>
+            <div class="flex-1 relative min-h-0"><canvas id="preview-chart"></canvas></div>
+          </div>
+          <div x-show="cm.tableName && cm.chartType === 'stat'" class="flex-1 flex items-center justify-center">
+            <div class="bg-base-100 rounded-xl border border-base-300 p-10 text-center min-w-[260px]">
+              <div class="text-xs font-semibold opacity-40 mb-3" x-text="cm.title || 'Untitled'"></div>
+              <div class="text-5xl font-bold text-primary" x-text="cm.statValue ?? '—'"></div>
+              <div class="text-[11px] opacity-40 mt-3 capitalize" x-text="cm.aggregation"></div>
+            </div>
+          </div>
+          <div x-show="cm.tableName && cm.chartType === 'table'"
+               class="flex-1 bg-base-100 rounded-xl border border-base-300 p-3 flex flex-col overflow-hidden">
+            <div class="text-xs font-semibold mb-2 opacity-60" x-text="cm.title || 'Untitled'"></div>
+            <div class="flex-1 overflow-auto" id="preview-table-container"></div>
+          </div>
+          <div x-show="cm.tableName" class="text-[10px] opacity-30 mt-2 text-center"
+               x-text="cm.recordCount + ' records' + (cm.filteredCount !== cm.recordCount ? ' (' + cm.filteredCount + ' after filters)' : '')"></div>
+        </div>
+      </div>
+
+      <!-- Footer -->
+      <div class="flex items-center justify-between px-5 py-3 border-t border-base-300 flex-shrink-0">
+        <button class="btn btn-ghost btn-sm" x-show="cm.step > 0" @click="cm.step--">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="15 18 9 12 9 6"/></svg> Back
+        </button>
+        <div x-show="cm.step === 0"></div>
+        <div class="flex gap-2">
+          <button class="btn btn-ghost btn-sm" @click="cm.open = false">Cancel</button>
+          <button x-show="cm.step < cmSteps.length - 1" class="btn btn-primary btn-sm"
+                  :disabled="cm.step === 0 && !cm.tableName"
+                  @click="cm.step++; if (cm.step === 1 && !cm.fields.length) onTableChange();">
+            Next <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+          </button>
+          <button x-show="cm.step === cmSteps.length - 1" class="btn btn-primary btn-sm gap-1"
+                  :disabled="!cm.tableName || (!cm.xField && !['stat','table'].includes(cm.chartType))"
+                  @click="saveChart()">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            <span x-text="cm.editId ? 'Update' : 'Add'"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop" @click="cm.open = false"><button>close</button></form>
+  </dialog>
+
+  <!-- ══════ Drill-down Modal ══════ -->
+  <dialog class="modal" :class="drillDown.open ? 'modal-open' : ''">
+    <div class="modal-box max-w-6xl w-[92vw] max-h-[85vh] flex flex-col p-0">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-base-300 flex-shrink-0">
+        <div>
+          <div class="font-bold text-sm" x-text="drillDown.title"></div>
+          <div class="text-[10px] opacity-40 flex items-center gap-3">
+            <span x-text="drillDown.records.length + ' rows'"></span>
+            <span x-show="drillDown.viewMode === 'aggregated'" class="badge badge-xs badge-primary">Aggregated</span>
+            <span x-show="drillDown.viewMode === 'raw'" class="badge badge-xs badge-ghost">Raw</span>
+          </div>
+        </div>
+        <div class="flex items-center gap-2">
+          <div class="join">
+            <button class="btn btn-xs join-item"
+                    :class="drillDown.viewMode === 'aggregated' ? 'btn-primary' : 'btn-ghost'"
+                    @click="drillDown.viewMode = 'aggregated'; buildDrillDownData()">Chart Data</button>
+            <button class="btn btn-xs join-item"
+                    :class="drillDown.viewMode === 'raw' ? 'btn-primary' : 'btn-ghost'"
+                    @click="drillDown.viewMode = 'raw'; buildDrillDownData()">Raw Data</button>
+          </div>
+          <input class="input input-bordered input-xs w-40" placeholder="Search…" x-model="drillDown.search" />
+          <button class="btn btn-ghost btn-xs gap-1" @click="exportCSV()">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12"/><path d="M8 11l4 4 4-4"/><path d="M4 19h16"/></svg> CSV
+          </button>
+          <button class="btn btn-ghost btn-xs btn-square" @click="drillDown.open = false">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+      </div>
+      <div class="flex-1 overflow-auto p-0">
+        <table class="table table-xs table-zebra table-pin-rows w-full">
+          <thead>
+            <tr>
+              <th class="text-[10px] uppercase w-10">#</th>
+              <template x-for="col in drillDown.columns" :key="'dh-' + col">
+                <th class="text-[10px] uppercase" x-text="col"></th>
+              </template>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="(row, ri) in filteredDrillDown()" :key="'dr-' + ri">
+              <tr>
+                <td class="text-[10px] opacity-30" x-text="ri + 1"></td>
+                <template x-for="col in drillDown.columns" :key="'dd-' + ri + '-' + col">
+                  <td class="text-[11px] max-w-[200px] truncate"
+                      x-text="typeof row[col] === 'object' ? JSON.stringify(row[col]) : row[col] ?? ''"></td>
+                </template>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+      <div class="px-5 py-2 border-t border-base-300 flex-shrink-0 text-[10px] opacity-40"
+           x-text="'Showing ' + filteredDrillDown().length + ' of ' + drillDown.records.length + ' rows'"></div>
+    </div>
+    <form method="dialog" class="modal-backdrop" @click="drillDown.open = false"><button>close</button></form>
+  </dialog>
+
+  <script>
+    document.addEventListener('alpine:init', () => {
+      Alpine.data('dashboardView', () => ({
+        dashboard: { name: '', widgets: [] },
+        loading: true,
+        saveIndicator: 'idle',
+        _saveTimeout: null,
+        _previewTimeout: null,
+        grid: null,
+        chartInstances: {},
+        tables: [],
+        allFields: [],
+        globalFilters: [],
+        previewChartInstance: null,
+        _dataCache: {},
+
+        // ══ ADDED: first-class date range — 0 = all time ══
+        dateRangeDays: 7,
+
+        // Returns midnight N days ago, or null for "all time"
+        getDateCutoff() {
+          const days = parseInt(this.dateRangeDays);
+          if (!days) return null;
+          const d = new Date();
+          d.setDate(d.getDate() - days);
+          d.setHours(0, 0, 0, 0);
+          return d;
+        },
+
+        // Bust cache and re-render everything when the range changes
+        onDateRangeChange() {
+          this._dataCache = {};
+          this.refreshAll();
+        },
+
+        colorThemes: {
+          default: ['#4f86f7', '#f7604f', '#f7c948', '#4bc0c0', '#9966ff', '#ff9f40', '#ff6b9d', '#5cd85c', '#c9cbcf', '#7b68ee'],
+          ocean: ['#0077b6', '#00b4d8', '#90e0ef', '#caf0f8', '#023e8a', '#48cae4', '#ade8f4', '#03045e'],
+          sunset: ['#f94144', '#f3722c', '#f8961e', '#f9844a', '#f9c74f', '#90be6d', '#43aa8b', '#4d908e', '#577590', '#277da1'],
+          forest: ['#2d6a4f', '#40916c', '#52b788', '#74c69d', '#95d5b2', '#b7e4c7', '#d8f3dc', '#1b4332'],
+          berry: ['#7400b8', '#6930c3', '#5e60ce', '#5390d9', '#4ea8de', '#48bfe3', '#56cfe1', '#64dfdf', '#72efdd', '#80ffdb'],
+          mono: ['#212529', '#495057', '#6c757d', '#adb5bd', '#ced4da', '#dee2e6', '#e9ecef', '#f8f9fa'],
+          warm: ['#d00000', '#dc2f02', '#e85d04', '#f48c06', '#faa307', '#ffba08', '#ffdd00'],
+          pastel: ['#ffc6ff', '#bdb2ff', '#a0c4ff', '#9bf6ff', '#caffbf', '#fdffb6', '#ffd6a5', '#ffadad'],
+        },
+
+        cmSteps: ['Data Source', 'Configure', 'Style & Filters'],
+
+        _cmDefaults() {
+          return {
+            open: false, step: 0, editId: null, title: '', chartType: 'bar',
+            tableName: '', xField: '', yField: '__count__', aggregation: 'count',
+            groupBy: [], sort: 'none', limit: 0, colorTheme: 'default',
+            filterValue: '', filters: [], colorMap: {},
+            fields: [], previewRecords: [], recordCount: 0, filteredCount: 0,
+            statValue: null, tableColumns: [], showAdvanced: false,
+            legendDisplay: 'auto', legendPosition: 'top',
+            chartTitle: '', chartTitlePosition: 'top',
+            tooltipEnabled: true,
+            animationDuration: 300, animationEasing: 'easeOutQuart',
+            xAxisLabel: '', yAxisLabel: '',
+            xGridDisplay: false, yGridDisplay: true,
+            beginAtZero: true, xTickRotation: 45,
+            borderWidth: 2, borderRadius: 4,
+            tension: 0.3, fill: false,
+            pointRadius: 3, pointStyle: 'circle',
+            barPercentage: 0.8, categoryPercentage: 0.9,
+            cutout: '',
+          };
+        },
+
+        cm: null,
+        filterModal: { open: false, draft: [] },
+        drillDown: { open: false, title: '', records: [], columns: [], search: '', viewMode: 'aggregated', widget: null, rawRecords: [] },
+
+        init() {
+          this.cm = this._cmDefaults();
+          const id = window.location.pathname.split('/').pop();
+          this.loadDashboard(id);
+          this.loadTables();
+        },
+
+        debouncedPreview() {
+          if (this._previewTimeout) clearTimeout(this._previewTimeout);
+          this._previewTimeout = setTimeout(() => this.updatePreview(), 200);
+        },
+
+        // ── Data loading ──
+
+        async loadTables() {
+          try {
+            this.tables = await (await fetch(`/api/tenants/${this.$store.app.tenantId}/tables`)).json();
+          } catch {
+            this.tables = [];
+          }
+        },
+
+        async fetchRecords(tableName) {
+          const cacheKey = `${tableName}__${this.dateRangeDays}`;
+          if (this._dataCache[cacheKey]) return this._dataCache[cacheKey];
+          try {
+            const days = parseInt(this.dateRangeDays);
+            const dayParam = days ? `&days=${days}` : '';
+            const perPage = 500;
+
+            // Fetch page 1 to find out total pages
+            const first = await (await fetch(
+              `/api/tenants/${this.$store.app.tenantId}/tables/${tableName}/records?page=1&per_page=${perPage}${dayParam}`
+            )).json();
+
+            let records = first.records.map(r => typeof r.data === 'string' ? JSON.parse(r.data) : r.data);
+
+            // Fetch remaining pages in parallel
+            if (first.pages > 1) {
+              const pageNums = Array.from({ length: first.pages - 1 }, (_, i) => i + 2);
+              const rest = await Promise.all(pageNums.map(p =>
+                fetch(`/api/tenants/${this.$store.app.tenantId}/tables/${tableName}/records?page=${p}&per_page=${perPage}${dayParam}`)
+                  .then(r => r.json())
+              ));
+              rest.forEach(res => {
+                records = records.concat(res.records.map(r => typeof r.data === 'string' ? JSON.parse(r.data) : r.data));
+              });
+            }
+
+            this._dataCache[cacheKey] = records;
+            return records;
+          } catch {
+            return [];
+          }
+        },
+
+        async onTableChange() {
+          const name = this.cm.tableName;
+          if (!name) { this.cm.fields = []; return; }
+          try {
+            const schema = await (await fetch(`/api/tenants/${this.$store.app.tenantId}/tables/${name}/schema`)).json();
+            if (schema.fields?.length) {
+              this.cm.fields = schema.fields.map(f => f.name);
+            } else { throw ''; }
+          } catch {
+            try {
+              const raw = await (await fetch(`/api/tenants/${this.$store.app.tenantId}/tables/${name}/records?limit=1`)).json();
+              if (raw.length) {
+                const record = typeof raw[0].data === 'string' ? JSON.parse(raw[0].data) : raw[0].data;
+                this.cm.fields = Object.keys(record);
+              } else { this.cm.fields = []; }
+            } catch { this.cm.fields = []; }
+          }
+          this.cm.fields.forEach(f => { if (!this.allFields.includes(f)) this.allFields.push(f); });
+          this.cm.previewRecords = await this.fetchRecords(name);
+          this.cm.recordCount = this.cm.previewRecords.length;
+          this.cm.filteredCount = this.cm.recordCount;
+          this.updatePreview();
+        },
+
+        // ── Filtering — now with targeted scope support ──
+
+        applyFilters(records, filters) {
+          if (!filters?.length) return records;
+          return records.filter(r => filters.every(f => {
+            if (!f.field || f.value === '' || f.value == null) return true;
+            const rv = String(r[f.field] ?? '');
+            const fv = String(f.value);
+            switch (f.op) {
+              case 'eq': return rv.toLowerCase() === fv.toLowerCase();
+              case 'neq': return rv.toLowerCase() !== fv.toLowerCase();
+              case 'gt': return parseFloat(rv) > parseFloat(fv);
+              case 'lt': return parseFloat(rv) < parseFloat(fv);
+              case 'contains': return rv.toLowerCase().includes(fv.toLowerCase());
+              default: return true;
+            }
+          }));
+        },
+
+        getGlobalFiltersForWidget(widgetId) {
+          return this.globalFilters.filter(f => {
+            if (!f.field || f.value === '' || f.value == null) return false;
+            if (f.scope === 'targeted') {
+              return (f.targets || []).includes(widgetId);
+            }
+            return true;
+          });
+        },
+
+        getWidgetRecords(widget, allRecords) {
+          let r = this.applyFilters(allRecords, this.getGlobalFiltersForWidget(widget.id));
+          return this.applyFilters(r, widget.filters);
+        },
+
+        applyGlobalFilters() {
+          this._dataCache = {};
+          this.refreshAll();
+          this.autoSave();
+        },
+
+        openFilterModal() {
+          this.populateAllFields();
+
+          this.filterModal = {
+            open: true,
+            draft: JSON.parse(JSON.stringify(
+              this.globalFilters.length
+                ? this.globalFilters
+                : []
+            )),
+          };
+        },
+
+        applyFilterDraft() {
+          this.globalFilters = this.filterModal.draft.filter(f => f.field && f.value).map(f => ({
+            field: f.field,
+            op: f.op,
+            value: f.value,
+            scope: f.scope || 'all',
+            targets: f.targets || [],
+          }));
+          this.filterModal.open = false;
+          this._dataCache = {};
+          this.refreshAll();
+          this.autoSave();
+        },
+
+        toggleFilterTarget(filter, widgetId) {
+          if (!filter.targets) filter.targets = [];
+          const idx = filter.targets.indexOf(widgetId);
+          if (idx >= 0) {
+            filter.targets.splice(idx, 1);
+          } else {
+            filter.targets.push(widgetId);
+          }
+        },
+
+        getChartTypeIcon(chartType) {
+          const icons = { bar: '📊', line: '📈', pie: '🥧', doughnut: '🍩', stat: '🔢', table: '📋' };
+          return icons[chartType] || '📊';
+        },
+
+        getChartTypeColor(chartType) {
+          const colors = {
+            bar: 'oklch(0.7 0.15 250)',
+            line: 'oklch(0.7 0.15 150)',
+            pie: 'oklch(0.7 0.15 30)',
+            doughnut: 'oklch(0.7 0.15 330)',
+            stat: 'oklch(0.7 0.15 280)',
+            table: 'oklch(0.7 0.15 200)',
+          };
+          return colors[chartType] || 'oklch(0.7 0.1 250)';
+        },
+
+        // ── Helpers ──
+
+        toggleArr(arr, val) {
+          const i = arr.indexOf(val);
+          if (i >= 0) arr.splice(i, 1);
+          else arr.push(val);
+        },
+
+        canAdvance(step) {
+          return !(step >= 1 && !this.cm.tableName);
+        },
+
+        getUniqueLabels() {
+          if (!this.cm.xField || !this.cm.previewRecords.length) return [];
+          const seen = new Set();
+          this.cm.previewRecords.forEach(r => seen.add(String(r[this.cm.xField] ?? 'Unknown')));
+          return [...seen].sort().slice(0, 30);
+        },
+
+        getDefaultColor(label) {
+          const palette = this.colorThemes[this.cm.colorTheme] || this.colorThemes.default;
+          const idx = this.getUniqueLabels().indexOf(label);
+          return palette[idx % palette.length] || '#cccccc';
+        },
+
+        filteredDrillDown() {
+          const q = (this.drillDown.search || '').toLowerCase();
+          if (!q) return this.drillDown.records;
+          return this.drillDown.records.filter(r =>
+            Object.values(r).some(v => String(v ?? '').toLowerCase().includes(q))
+          );
+        },
+
+        computeStat(records, yField, aggregation) {
+          if (yField === '__count__') return records.length;
+          const vals = records.map(r => parseFloat(r[yField])).filter(v => !isNaN(v));
+          switch (aggregation) {
+            case 'count': return vals.length;
+            case 'sum': return Math.round(vals.reduce((a, b) => a + b, 0) * 100) / 100;
+            case 'average': return vals.length ? Math.round(vals.reduce((a, b) => a + b, 0) / vals.length * 100) / 100 : 0;
+            case 'min': return vals.length ? Math.min(...vals) : 0;
+            case 'max': return vals.length ? Math.max(...vals) : 0;
+            default: return vals.length;
+          }
+        },
+
+        aggregateData(records, xField, yField, aggregation, sort, limit) {
+          const groups = {};
+          records.forEach(r => {
+            const label = String(r[xField] ?? 'Unknown');
+            if (!groups[label]) groups[label] = [];
+            if (yField === '__count__') { groups[label].push(1); }
+            else { const v = parseFloat(r[yField]); groups[label].push(isNaN(v) ? 0 : v); }
+          });
+          let entries = Object.entries(groups).map(([label, arr]) => {
+            let v;
+            switch (aggregation) {
+              case 'count': v = arr.length; break;
+              case 'sum': v = arr.reduce((a, b) => a + b, 0); break;
+              case 'average': v = arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 0; break;
+              case 'min': v = Math.min(...arr); break;
+              case 'max': v = Math.max(...arr); break;
+              default: v = arr.length;
+            }
+            return { label, value: Math.round(v * 100) / 100 };
+          });
+          switch (sort) {
+            case 'value_desc': entries.sort((a, b) => b.value - a.value); break;
+            case 'value_asc': entries.sort((a, b) => a.value - b.value); break;
+            case 'label_asc': entries.sort((a, b) => a.label.localeCompare(b.label)); break;
+            case 'label_desc': entries.sort((a, b) => b.label.localeCompare(a.label)); break;
+          }
+          if (limit && limit > 0) entries = entries.slice(0, limit);
+          return { labels: entries.map(e => e.label), values: entries.map(e => e.value) };
+        },
+
+        _adv(m) {
+          return {
+            legendDisplay: m.legendDisplay ?? m.legend_display ?? 'auto',
+            legendPosition: m.legendPosition ?? m.legend_position ?? 'top',
+            chartTitle: m.chartTitle ?? m.chart_title ?? '',
+            chartTitlePosition: m.chartTitlePosition ?? m.chart_title_position ?? 'top',
+            tooltipEnabled: m.tooltipEnabled ?? m.tooltip_enabled ?? true,
+            animationDuration: m.animationDuration ?? m.animation_duration ?? 300,
+            animationEasing: m.animationEasing ?? m.animation_easing ?? 'easeOutQuart',
+            xAxisLabel: m.xAxisLabel ?? m.x_axis_label ?? '',
+            yAxisLabel: m.yAxisLabel ?? m.y_axis_label ?? '',
+            xGridDisplay: m.xGridDisplay ?? m.x_grid_display ?? false,
+            yGridDisplay: m.yGridDisplay ?? m.y_grid_display ?? true,
+            beginAtZero: m.beginAtZero ?? m.begin_at_zero ?? true,
+            xTickRotation: m.xTickRotation ?? m.x_tick_rotation ?? 45,
+            borderWidth: m.borderWidth ?? m.border_width ?? 2,
+            borderRadius: m.borderRadius ?? m.border_radius ?? 4,
+            tension: m.tension ?? 0.3,
+            fill: m.fill ?? false,
+            pointRadius: m.pointRadius ?? m.point_radius ?? 3,
+            pointStyle: m.pointStyle ?? m.point_style ?? 'circle',
+            barPercentage: m.barPercentage ?? m.bar_percentage ?? 0.8,
+            categoryPercentage: m.categoryPercentage ?? m.category_percentage ?? 0.9,
+            cutout: m.cutout ?? '',
+          };
+        },
+
+        buildChartConfig(type, title, labels, values, palette, isPie, colorMap, advSrc) {
+          const a = this._adv(advSrc || {});
+          const bgColors = labels.map((l, i) => {
+            if (colorMap?.[l]) return colorMap[l] + (isPie ? '' : '99');
+            return isPie ? palette[i % palette.length] : palette[0] + '99';
+          });
+          const borderColors = labels.map((l, i) => {
+            if (colorMap?.[l]) return colorMap[l];
+            return isPie ? '#fff' : palette[0];
+          });
+          const legendDisplay = a.legendDisplay === 'true' ? true : a.legendDisplay === 'false' ? false : isPie;
+          return {
+            type,
+            data: {
+              labels,
+              datasets: [{
+                label: title || '',
+                data: values,
+                backgroundColor: bgColors,
+                borderColor: borderColors,
+                borderWidth: a.borderWidth,
+                borderRadius: isPie ? 0 : a.borderRadius,
+                tension: a.tension,
+                fill: a.fill,
+                pointRadius: a.pointRadius,
+                pointStyle: a.pointStyle === 'false' ? false : a.pointStyle,
+                barPercentage: a.barPercentage,
+                categoryPercentage: a.categoryPercentage,
+              }],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              animation: a.animationDuration === 0 ? false : { duration: a.animationDuration, easing: a.animationEasing },
+              cutout: isPie && a.cutout ? a.cutout : undefined,
+              plugins: {
+                legend: { display: legendDisplay, position: a.legendPosition, labels: { boxWidth: 12, padding: 8, font: { size: 11 } } },
+                title: { display: !!a.chartTitle, text: a.chartTitle, position: a.chartTitlePosition, font: { size: 13, weight: '600' } },
+                tooltip: { enabled: a.tooltipEnabled !== false, backgroundColor: '#1f2937', padding: 8, cornerRadius: 6 },
+              },
+              scales: isPie ? {} : {
+                x: { display: true, grid: { display: a.xGridDisplay }, ticks: { font: { size: 11 }, maxRotation: a.xTickRotation }, title: { display: !!a.xAxisLabel, text: a.xAxisLabel, font: { size: 12 } } },
+                y: { beginAtZero: a.beginAtZero !== false, grid: { display: a.yGridDisplay !== false, color: 'rgba(0,0,0,0.04)' }, ticks: { font: { size: 11 } }, title: { display: !!a.yAxisLabel, text: a.yAxisLabel, font: { size: 12 } } },
+              },
+            },
+          };
+        },
+
+        buildMultiSeriesConfig(records, m, palette) {
+          const a = this._adv(m);
+          const groupField = (m.groupBy || m.group_by || [])[0];
+          const xField = m.xField || m.x_field;
+          const yField = m.yField || m.y_field;
+          const aggregation = m.aggregation || 'count';
+          const sort = m.sort || 'none';
+          const chartType = m.chartType || m.chart_type || 'bar';
+          const colorMap = m.colorMap || m.color_map || {};
+          if (!groupField || !xField) return this.buildChartConfig(chartType, '', [], [], palette, false, colorMap, m);
+          const groupValues = [...new Set(records.map(r => String(r[groupField] ?? 'Unknown')))];
+          const xLabels = [...new Set(records.map(r => String(r[xField] ?? 'Unknown')))];
+          if (sort === 'label_asc') xLabels.sort();
+          else if (sort === 'label_desc') xLabels.sort().reverse();
+          const datasets = groupValues.map((gv, gi) => {
+            const filtered = records.filter(r => String(r[groupField] ?? 'Unknown') === gv);
+            const { labels, values } = this.aggregateData(filtered, xField, yField, aggregation, 'none', 0);
+            const dataMap = {}; labels.forEach((l, i) => dataMap[l] = values[i]);
+            const color = colorMap[gv] || palette[gi % palette.length];
+            return {
+              label: gv, data: xLabels.map(l => dataMap[l] || 0),
+              backgroundColor: color + '99', borderColor: color,
+              borderWidth: a.borderWidth, borderRadius: a.borderRadius,
+              tension: a.tension, fill: a.fill, pointRadius: a.pointRadius,
+              pointStyle: a.pointStyle === 'false' ? false : a.pointStyle,
+            };
+          });
+          const legendDisplay = a.legendDisplay === 'false' ? false : true;
+          return {
+            type: chartType,
+            data: { labels: xLabels, datasets },
+            options: {
+              responsive: true, maintainAspectRatio: false,
+              animation: a.animationDuration === 0 ? false : { duration: a.animationDuration, easing: a.animationEasing },
+              plugins: {
+                legend: { display: legendDisplay, position: a.legendPosition, labels: { boxWidth: 12, padding: 8, font: { size: 11 } } },
+                title: { display: !!a.chartTitle, text: a.chartTitle, position: a.chartTitlePosition, font: { size: 13, weight: '600' } },
+                tooltip: { enabled: a.tooltipEnabled !== false, backgroundColor: '#1f2937', padding: 8, cornerRadius: 6 },
+              },
+              scales: {
+                x: { grid: { display: a.xGridDisplay }, ticks: { font: { size: 11 }, maxRotation: a.xTickRotation }, title: { display: !!a.xAxisLabel, text: a.xAxisLabel } },
+                y: { beginAtZero: a.beginAtZero !== false, grid: { display: a.yGridDisplay !== false, color: 'rgba(0,0,0,0.04)' }, ticks: { font: { size: 11 } }, title: { display: !!a.yAxisLabel, text: a.yAxisLabel } },
+              },
+            },
+          };
+        },
+
+        updatePreview() {
+          const m = this.cm;
+          if (!m.previewRecords.length) return;
+          let records = this.applyFilters(m.previewRecords, m.filters);
+          m.filteredCount = records.length;
+          if (m.chartType === 'stat') {
+            let filtered = records;
+            if (m.xField && m.filterValue) filtered = filtered.filter(r => String(r[m.xField] ?? '') === m.filterValue);
+            m.statValue = this.computeStat(filtered, m.yField, m.aggregation);
+            return;
+          }
+          if (m.chartType === 'table') { this.renderPreviewTable(records); return; }
+          if (!m.xField) return;
+          try { if (this.previewChartInstance) this.previewChartInstance.destroy(); } catch (e) {}
+          this.previewChartInstance = null;
+          const canvas = document.getElementById('preview-chart');
+          if (!canvas) return;
+          try { canvas.getContext('2d'); } catch (e) { return; }
+          const palette = this.colorThemes[m.colorTheme] || this.colorThemes.default;
+          const isPie = ['pie', 'doughnut'].includes(m.chartType);
+          try {
+            if (m.groupBy.length > 0 && !isPie) {
+              this.previewChartInstance = new Chart(canvas, this.buildMultiSeriesConfig(records, m, palette));
+            } else {
+              const { labels, values } = this.aggregateData(records, m.xField, m.yField, m.aggregation, m.sort, m.limit);
+              this.previewChartInstance = new Chart(canvas, this.buildChartConfig(m.chartType, m.title, labels, values, palette, isPie, m.colorMap, m));
+            }
+          } catch (e) { console.warn('Preview render failed:', e); this.previewChartInstance = null; }
+        },
+
+        renderPreviewTable(records) {
+          const cols = this.cm.tableColumns.length ? this.cm.tableColumns : this.cm.fields.slice(0, 5);
+          const limited = records.slice(0, this.cm.limit || 10);
+          const container = document.getElementById('preview-table-container');
+          if (!container) return;
+          let html = '<table class="table table-xs table-zebra w-full"><thead><tr>';
+          cols.forEach(col => html += `<th class="text-[10px] uppercase">${this.escHtml(col)}</th>`);
+          html += '</tr></thead><tbody>';
+          limited.forEach(r => {
+            html += '<tr>';
+            cols.forEach(col => html += `<td class="text-[11px] max-w-[140px] truncate">${this.escHtml(String(r[col] ?? ''))}</td>`);
+            html += '</tr>';
+          });
+          html += '</tbody></table>';
+          container.innerHTML = html;
+        },
+
+        // ── Drill-down ──
+
+        async openDrillDown(widgetId) {
+          const widget = (this.dashboard.widgets || []).find(w => w.id === widgetId);
+          if (!widget) return;
+          const allRecords = await this.fetchRecords(widget.table_name);
+          const records = this.getWidgetRecords(widget, allRecords);
+          this.drillDown = { open: true, title: widget.title || 'Data', records: [], columns: [], search: '', viewMode: 'aggregated', widget, rawRecords: records };
+          this.buildDrillDownData();
+        },
+
+        buildDrillDownData() {
+          const w = this.drillDown.widget;
+          if (!w) return;
+          if (this.drillDown.viewMode === 'raw') {
+            this.drillDown.records = this.drillDown.rawRecords;
+            this.drillDown.columns = Object.keys(this.drillDown.rawRecords[0] || {});
+            return;
+          }
+          const records = this.drillDown.rawRecords;
+          const xField = w.x_field;
+          const yField = w.y_field || '__count__';
+          const agg = w.aggregation || 'count';
+          if (w.chart_type === 'stat') {
+            let filtered = records;
+            if (w.x_field && w.filter_value) filtered = filtered.filter(r => String(r[w.x_field] ?? '') === w.filter_value);
+            const val = this.computeStat(filtered, yField, agg);
+            this.drillDown.columns = ['Metric', 'Value'];
+            this.drillDown.records = [{ Metric: w.title || 'Stat', Value: val }];
+            return;
+          }
+          if (w.chart_type === 'table') {
+            const cols = w.table_columns?.length ? w.table_columns : Object.keys(records[0] || {}).slice(0, 5);
+            this.drillDown.columns = cols;
+            this.drillDown.records = records.slice(0, w.limit || 100);
+            return;
+          }
+          const { labels, values } = this.aggregateData(records, xField, yField, agg, w.sort, w.limit);
+          const aggLabel = agg === 'count' ? 'Count' : agg.charAt(0).toUpperCase() + agg.slice(1) + ' of ' + (yField === '__count__' ? 'records' : yField);
+          this.drillDown.columns = [xField, aggLabel];
+          this.drillDown.records = labels.map((l, i) => ({ [xField]: l, [aggLabel]: values[i] }));
+        },
+
+        exportCSV() {
+          const rows = this.filteredDrillDown();
+          const cols = this.drillDown.columns;
+          if (!rows.length) return;
+          let csv = cols.join(',') + '\n';
+          rows.forEach(r => {
+            csv += cols.map(c => {
+              let v = r[c] ?? '';
+              if (typeof v === 'object') v = JSON.stringify(v);
+              v = String(v);
+              if (v.includes(',') || v.includes('"') || v.includes('\n')) v = '"' + v.replace(/"/g, '""') + '"';
+              return v;
+            }).join(',') + '\n';
+          });
+          const blob = new Blob([csv], { type: 'text/csv' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url; a.download = (this.drillDown.title || 'data').replace(/[^a-z0-9]/gi, '_') + '.csv';
+          a.click(); URL.revokeObjectURL(url);
+        },
+
+        // ── PDF export ──
+
+        async exportPDF() {
+          const widgets = this.dashboard.widgets || [];
+          if (!widgets.length) return;
+          this.saveIndicator = 'saving';
+          try {
+            const { jsPDF } = window.jspdf;
+            const pdf = new jsPDF({ orientation: 'landscape', unit: 'pt', format: 'a4' });
+            const pageW = pdf.internal.pageSize.getWidth();
+            const pageH = pdf.internal.pageSize.getHeight();
+            const margin = 30;
+            const usableW = pageW - margin * 2;
+            pdf.setFontSize(18); pdf.setTextColor(30, 30, 30);
+            pdf.text(this.dashboard.name || 'Dashboard', margin, margin + 14);
+            pdf.setFontSize(9); pdf.setTextColor(130, 130, 130);
+            pdf.text('Exported ' + new Date().toLocaleDateString() + ' ' + new Date().toLocaleTimeString(), margin, margin + 28);
+            const activeFilters = (this.globalFilters || []).filter(f => f.field && f.value);
+            if (activeFilters.length) {
+              pdf.setFontSize(8); pdf.setTextColor(160, 120, 0);
+              const filterText = 'Filters: ' + activeFilters.map(f => {
+                let txt = f.field + ' ' + { eq: '=', neq: '≠', gt: '>', lt: '<', contains: '∋' }[f.op] + ' ' + f.value;
+                if (f.scope === 'targeted') txt += ' [' + (f.targets || []).length + ' widgets]';
+                return txt;
+              }).join(', ');
+              pdf.text(filterText, margin, margin + 40);
+            }
+            const gridCols = 12;
+            const colW = usableW / gridCols;
+            const rowH = 60;
+            const startY = margin + 55;
+            const sorted = [...widgets].sort((a, b) => (a.y ?? 0) - (b.y ?? 0) || (a.x ?? 0) - (b.x ?? 0));
+            let currentPage = 0;
+            for (const widget of sorted) {
+              const wx = margin + (widget.x ?? 0) * colW;
+              let wy = startY + (widget.y ?? 0) * rowH;
+              const ww = (widget.w ?? 4) * colW;
+              const wh = (widget.h ?? 3) * rowH;
+              const pageForWidget = Math.floor((wy - startY) / (pageH - startY - margin));
+              while (currentPage < pageForWidget) { pdf.addPage(); currentPage++; }
+              wy = wy - currentPage * (pageH - startY - margin);
+              if (wy + wh > pageH) { pdf.addPage(); currentPage++; wy = startY; }
+              pdf.setFillColor(255, 255, 255); pdf.setDrawColor(220, 220, 220);
+              pdf.roundedRect(wx, wy, ww, wh, 4, 4, 'FD');
+              pdf.setFontSize(9); pdf.setTextColor(60, 60, 60);
+              pdf.text(widget.title || 'Untitled', wx + 8, wy + 14);
+              pdf.setDrawColor(235, 235, 235); pdf.line(wx, wy + 20, wx + ww, wy + 20);
+              const contentX = wx + 6, contentY = wy + 24, contentW = ww - 12, contentH = wh - 30;
+              if (widget.chart_type === 'stat') {
+                const allRecs = await this.fetchRecords(widget.table_name);
+                let recs = this.getWidgetRecords(widget, allRecs);
+                if (widget.x_field && widget.filter_value) recs = recs.filter(r => String(r[widget.x_field] ?? '') === widget.filter_value);
+                const val = this.computeStat(recs, widget.y_field, widget.aggregation);
+                pdf.setFontSize(28); pdf.setTextColor(79, 134, 247);
+                const valStr = typeof val === 'number' ? val.toLocaleString() : String(val);
+                pdf.text(valStr, contentX + (contentW - pdf.getTextWidth(valStr)) / 2, contentY + contentH / 2 + 8);
+                pdf.setFontSize(8); pdf.setTextColor(150, 150, 150);
+                const aggStr = widget.aggregation || 'count';
+                pdf.text(aggStr, contentX + (contentW - pdf.getTextWidth(aggStr)) / 2, contentY + contentH / 2 + 22);
+              } else if (widget.chart_type === 'table') {
+                const allRecs = await this.fetchRecords(widget.table_name);
+                const recs = this.getWidgetRecords(widget, allRecs);
+                const cols = widget.table_columns?.length ? widget.table_columns : Object.keys(recs[0] || {}).slice(0, 5);
+                const limited = recs.slice(0, Math.min(widget.limit || 8, 8));
+                const colWidth = contentW / cols.length;
+                pdf.setFontSize(7); pdf.setTextColor(100, 100, 100);
+                cols.forEach((col, ci) => pdf.text(col.substring(0, 15).toUpperCase(), contentX + ci * colWidth, contentY + 8));
+                pdf.setDrawColor(235, 235, 235); pdf.line(contentX, contentY + 11, contentX + contentW, contentY + 11);
+                pdf.setTextColor(50, 50, 50);
+                limited.forEach((row, ri) => {
+                  const rowY = contentY + 20 + ri * 12;
+                  if (rowY > contentY + contentH - 4) return;
+                  cols.forEach((col, ci) => pdf.text(String(row[col] ?? '').substring(0, 18), contentX + ci * colWidth, rowY));
+                });
+              } else {
+                const canvasEl = document.getElementById(`chart-${widget.id}`);
+                if (canvasEl) {
+                  try {
+                    const imgData = canvasEl.toDataURL('image/png');
+                    const cAspect = canvasEl.width / canvasEl.height;
+                    const areaAspect = contentW / contentH;
+                    let imgW, imgH;
+                    if (cAspect > areaAspect) { imgW = contentW; imgH = contentW / cAspect; }
+                    else { imgH = contentH; imgW = contentH * cAspect; }
+                    pdf.addImage(imgData, 'PNG', contentX + (contentW - imgW) / 2, contentY + (contentH - imgH) / 2, imgW, imgH);
+                  } catch (e) {
+                    pdf.setFontSize(8); pdf.setTextColor(180, 180, 180);
+                    pdf.text('Chart could not be exported', contentX + 10, contentY + contentH / 2);
+                  }
+                }
+              }
+            }
+            pdf.save((this.dashboard.name || 'dashboard').replace(/[^a-z0-9]/gi, '_') + '.pdf');
+            this.saveIndicator = 'saved';
+          } catch (e) { console.error('PDF export failed:', e); this.saveIndicator = 'error'; }
+          setTimeout(() => { if (this.saveIndicator !== 'error') this.saveIndicator = 'idle'; }, 2000);
+        },
+
+        // ── Dashboard loading ──
+
+        async loadDashboard(id) {
+          try {
+            this.dashboard = await (await fetch(`/api/tenants/${this.$store.app.tenantId}/dashboards/${id}`)).json();
+            // Migrate global_filters to include scope/targets
+            this.globalFilters = (this.dashboard.global_filters || []).map(f => ({
+              field: f.field || '',
+              op: f.op || 'eq',
+              value: f.value || '',
+              scope: f.scope || 'all',
+              targets: f.targets || [],
+            }));
+            this.loading = false;
+            await this.populateAllFields();
+            this.$nextTick(() => this.initGrid());
+          } catch {
+            this.loading = false;
+          }
+        },
+
+        async populateAllFields() {
+          const tables = [...new Set((this.dashboard.widgets || []).map(w => w.table_name).filter(Boolean))];
+          for (const tableName of tables) {
+            try {
+              const schema = await (await fetch(`/api/tenants/${this.$store.app.tenantId}/tables/${tableName}/schema`)).json();
+              if (schema.fields?.length) {
+                schema.fields.forEach(f => { if (!this.allFields.includes(f.name)) this.allFields.push(f.name); });
+              }
+            } catch {
+              // fallback: fetch one record
+              try {
+                const raw = await (await fetch(`/api/tenants/${this.$store.app.tenantId}/tables/${tableName}/records?limit=1`)).json();
+                if (raw.length) {
+                  const record = typeof raw[0].data === 'string' ? JSON.parse(raw[0].data) : raw[0].data;
+                  Object.keys(record).forEach(f => { if (!this.allFields.includes(f)) this.allFields.push(f); });
+                }
+              } catch {}
+            }
+          }
+        },
+
+        initGrid() {
+          this.grid = GridStack.init({
+            column: 12, cellHeight: 80, margin: 10, animate: true, float: false,
+          }, '#grid-stack');
+          this.grid.on('change', () => this.syncLayoutAndSave());
+          (this.dashboard.widgets || []).forEach(w => this.addWidgetToGrid(w));
+        },
+
+        addWidgetToGrid(widget) {
+          const wid = widget.id;
+          const isStat = widget.chart_type === 'stat';
+          const isTable = widget.chart_type === 'table';
+          const hasFilters = (widget.filters || []).some(f => f.field && f.value);
+          // Check if any global filter targets this widget specifically
+          const hasTargetedGlobalFilter = this.globalFilters.some(f =>
+            f.scope === 'targeted' && (f.targets || []).includes(wid)
+          );
+
+          const el = document.createElement('div');
+          el.className = 'grid-stack-item';
+          el.setAttribute('gs-id', wid);
+
+          const filterIcon = hasFilters
+            ? '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" class="text-warning"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>'
+            : '';
+
+          const targetedIcon = hasTargetedGlobalFilter
+            ? '<div class="widget-filter-dot" title="Targeted by dashboard filter"></div>'
+            : '';
+
+          const header = `
+            <div class="flex items-center justify-between px-3 py-2 border-b border-base-300 flex-shrink-0">
+              <div class="flex items-center gap-1.5">
+                <span class="widget-title capitalize text-xs font-semibold truncate">${this.escHtml(widget.title || 'Untitled')}</span>
+                ${filterIcon ? '<span>' + filterIcon + '</span>' : ''}
+                ${targetedIcon}
+              </div>
+              <div class="flex gap-0.5">
+                <button class="btn btn-ghost btn-xs btn-square hover:opacity-100 chart-data-btn" title="View data">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 3v18"/></svg></button>
+                <button class="btn btn-ghost btn-xs btn-square hover:opacity-100 chart-edit-btn" title="Edit">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></button>
+                <button class="btn btn-ghost btn-xs btn-square hover:opacity-100 text-error chart-delete-btn" title="Remove">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+              </div>
+            </div>`;
+
+          let body;
+          if (isStat) {
+            body = `<div class="flex-1 flex items-center justify-center"><div class="text-center"><div class="stat-value text-4xl font-bold text-primary" id="stat-${wid}">—</div><div class="text-[10px] opacity-40 mt-1 capitalize">${this.escHtml(widget.aggregation || 'count')}</div></div></div>`;
+          } else if (isTable) {
+            body = `<div class="flex-1 overflow-auto p-2"><div id="table-${wid}"></div></div>`;
+          } else {
+            body = `<div class="flex-1 p-3 relative min-h-0 cursor-pointer chart-click-area"><canvas id="chart-${wid}"></canvas></div>`;
+          }
+
+          el.innerHTML = `<div class="gs-item-content"><div class="card bg-base-100 border border-base-300 h-full flex flex-col overflow-hidden rounded-xl">${header}${body}</div></div>`;
+
+          this.grid.addWidget(el, {
+            x: widget.x ?? 0, y: widget.y ?? 0,
+            w: widget.w ?? (isStat ? 3 : isTable ? 6 : 4),
+            h: widget.h ?? (isStat ? 2 : 3),
+            id: wid,
+          });
+
+          el.querySelector('.chart-edit-btn')?.addEventListener('click', e => { e.stopPropagation(); this.openEditChart(wid); });
+          el.querySelector('.chart-delete-btn')?.addEventListener('click', e => { e.stopPropagation(); this.removeChart(wid); });
+          el.querySelector('.chart-data-btn')?.addEventListener('click', e => { e.stopPropagation(); this.openDrillDown(wid); });
+          el.querySelector('.chart-click-area')?.addEventListener('dblclick', e => { e.stopPropagation(); this.openDrillDown(wid); });
+
+          this.renderWidget(widget);
+
+          this.grid.on('resizestop', (ev, resizedEl) => {
+            if (resizedEl.getAttribute('gs-id') === wid) setTimeout(() => this.renderWidget(widget), 100);
+          });
+        },
+
+        async renderWidget(widget) {
+          const allRecords = await this.fetchRecords(widget.table_name);
+          const records = this.getWidgetRecords(widget, allRecords);
+          if (widget.chart_type === 'stat') {
+            let filtered = records;
+            if (widget.x_field && widget.filter_value) filtered = filtered.filter(r => String(r[widget.x_field] ?? '') === widget.filter_value);
+            const val = this.computeStat(filtered, widget.y_field, widget.aggregation);
+            const el = document.getElementById(`stat-${widget.id}`);
+            if (el) el.textContent = typeof val === 'number' ? val.toLocaleString() : val;
+            return;
+          }
+          if (widget.chart_type === 'table') {
+            const cols = widget.table_columns?.length ? widget.table_columns : Object.keys(records[0] || {}).slice(0, 5);
+            const limited = records.slice(0, widget.limit || 10);
+            const container = document.getElementById(`table-${widget.id}`);
+            if (!container) return;
+            let html = '<table class="table table-xs table-zebra w-full"><thead><tr>';
+            cols.forEach(col => html += `<th class="text-[10px] uppercase">${this.escHtml(col)}</th>`);
+            html += '</tr></thead><tbody>';
+            limited.forEach(r => {
+              html += '<tr>';
+              cols.forEach(col => html += `<td class="text-[11px] max-w-[120px] truncate">${this.escHtml(String(r[col] ?? ''))}</td>`);
+              html += '</tr>';
+            });
+            html += '</tbody></table>';
+            container.innerHTML = html;
+            return;
+          }
+          const canvas = document.getElementById(`chart-${widget.id}`);
+          if (!canvas) return;
+          if (this.chartInstances[widget.id]) { try { this.chartInstances[widget.id].destroy(); } catch (e) {} }
+          if (!records.length) return;
+          const palette = this.colorThemes[widget.color_theme] || this.colorThemes.default;
+          const isPie = ['pie', 'doughnut'].includes(widget.chart_type);
+          const groupBy = widget.group_by || [];
+          const colorMap = widget.color_map || {};
+          try {
+            if (groupBy.length > 0 && !isPie) {
+              this.chartInstances[widget.id] = new Chart(canvas, this.buildMultiSeriesConfig(records, widget, palette));
+            } else {
+              const { labels, values } = this.aggregateData(records, widget.x_field, widget.y_field, widget.aggregation, widget.sort, widget.limit);
+              this.chartInstances[widget.id] = new Chart(canvas, this.buildChartConfig(widget.chart_type, widget.title, labels, values, palette, isPie, colorMap, widget));
+            }
+          } catch (e) { console.warn('Widget render failed:', e); }
+        },
+
+        refreshAll() {
+          this._dataCache = {};
+          (this.dashboard.widgets || []).forEach(w => this.renderWidget(w));
+        },
+
+        openAddChart(type) {
+          this.cm = { ...this._cmDefaults(), open: true, chartType: type || 'bar' };
+          if (this.previewChartInstance) { try { this.previewChartInstance.destroy(); } catch (e) {} this.previewChartInstance = null; }
+        },
+
+        openEditChart(widgetId) {
+          const w = (this.dashboard.widgets || []).find(x => x.id === widgetId);
+          if (!w) return;
+          this.cm = {
+            ...this._cmDefaults(),
+            open: true, step: 1, editId: widgetId,
+            title: w.title || '', chartType: w.chart_type || 'bar',
+            tableName: w.table_name || '', xField: w.x_field || '',
+            yField: w.y_field || '__count__', aggregation: w.aggregation || 'count',
+            groupBy: [...(w.group_by || [])], sort: w.sort || 'none',
+            limit: w.limit || 0, colorTheme: w.color_theme || 'default',
+            filterValue: w.filter_value || '',
+            filters: JSON.parse(JSON.stringify(w.filters || [])),
+            colorMap: JSON.parse(JSON.stringify(w.color_map || {})),
+            tableColumns: [...(w.table_columns || [])],
+            legendDisplay: w.legendDisplay ?? w.legend_display ?? 'auto',
+            legendPosition: w.legendPosition ?? w.legend_position ?? 'top',
+            chartTitle: w.chartTitle ?? w.chart_title ?? '',
+            chartTitlePosition: w.chartTitlePosition ?? w.chart_title_position ?? 'top',
+            tooltipEnabled: w.tooltipEnabled ?? w.tooltip_enabled ?? true,
+            animationDuration: w.animationDuration ?? w.animation_duration ?? 300,
+            animationEasing: w.animationEasing ?? w.animation_easing ?? 'easeOutQuart',
+            xAxisLabel: w.xAxisLabel ?? w.x_axis_label ?? '',
+            yAxisLabel: w.yAxisLabel ?? w.y_axis_label ?? '',
+            xGridDisplay: w.xGridDisplay ?? w.x_grid_display ?? false,
+            yGridDisplay: w.yGridDisplay ?? w.y_grid_display ?? true,
+            beginAtZero: w.beginAtZero ?? w.begin_at_zero ?? true,
+            xTickRotation: w.xTickRotation ?? w.x_tick_rotation ?? 45,
+            borderWidth: w.borderWidth ?? w.border_width ?? 2,
+            borderRadius: w.borderRadius ?? w.border_radius ?? 4,
+            tension: w.tension ?? 0.3, fill: w.fill ?? false,
+            pointRadius: w.pointRadius ?? w.point_radius ?? 3,
+            pointStyle: w.pointStyle ?? w.point_style ?? 'circle',
+            barPercentage: w.barPercentage ?? w.bar_percentage ?? 0.8,
+            categoryPercentage: w.categoryPercentage ?? w.category_percentage ?? 0.9,
+            cutout: w.cutout ?? '',
+          };
+          if (this.previewChartInstance) { try { this.previewChartInstance.destroy(); } catch (e) {} this.previewChartInstance = null; }
+          this.onTableChange();
+        },
+
+        saveChart() {
+          const m = this.cm;
+          const data = {
+            title: m.title, chart_type: m.chartType, table_name: m.tableName,
+            x_field: m.xField, y_field: m.yField, aggregation: m.aggregation,
+            group_by: m.groupBy, sort: m.sort, limit: m.limit,
+            color_theme: m.colorTheme, filter_value: m.filterValue,
+            filters: m.filters.filter(f => f.field && f.value),
+            color_map: m.colorMap, table_columns: m.tableColumns,
+            legendDisplay: m.legendDisplay, legendPosition: m.legendPosition,
+            chartTitle: m.chartTitle, chartTitlePosition: m.chartTitlePosition,
+            tooltipEnabled: m.tooltipEnabled,
+            animationDuration: m.animationDuration, animationEasing: m.animationEasing,
+            xAxisLabel: m.xAxisLabel, yAxisLabel: m.yAxisLabel,
+            xGridDisplay: m.xGridDisplay, yGridDisplay: m.yGridDisplay,
+            beginAtZero: m.beginAtZero, xTickRotation: m.xTickRotation,
+            borderWidth: m.borderWidth, borderRadius: m.borderRadius,
+            tension: m.tension, fill: m.fill,
+            pointRadius: m.pointRadius, pointStyle: m.pointStyle,
+            barPercentage: m.barPercentage, categoryPercentage: m.categoryPercentage,
+            cutout: m.cutout,
+          };
+          if (m.editId) {
+            const widget = this.dashboard.widgets.find(w => w.id === m.editId);
+            if (widget) {
+              Object.assign(widget, data);
+              const gsEl = document.querySelector(`[gs-id="${m.editId}"]`);
+              if (gsEl) {
+                const node = gsEl.gridstackNode;
+                this.grid.removeWidget(gsEl);
+                if (this.chartInstances[m.editId]) { try { this.chartInstances[m.editId].destroy(); } catch (e) {} delete this.chartInstances[m.editId]; }
+                widget.x = node?.x ?? widget.x; widget.y = node?.y ?? widget.y;
+                widget.w = node?.w ?? widget.w; widget.h = node?.h ?? widget.h;
+                this.addWidgetToGrid(widget);
+              }
+            }
+          } else {
+            const id = 'w_' + Date.now();
+            const widget = {
+              id, ...data,
+              x: 0, y: 0,
+              w: m.chartType === 'stat' ? 3 : m.chartType === 'table' ? 6 : ['pie', 'doughnut'].includes(m.chartType) ? 4 : 6,
+              h: m.chartType === 'stat' ? 2 : 3,
+            };
+            if (!this.dashboard.widgets) this.dashboard.widgets = [];
+            this.dashboard.widgets.push(widget);
+            this.addWidgetToGrid(widget);
+          }
+          this.cm.open = false;
+          this.autoSave();
+        },
+
+        removeChart(widgetId) {
+          if (!confirm('Remove this widget?')) return;
+          const el = document.querySelector(`[gs-id="${widgetId}"]`);
+          if (el) this.grid.removeWidget(el);
+          if (this.chartInstances[widgetId]) { try { this.chartInstances[widgetId].destroy(); } catch (e) {} delete this.chartInstances[widgetId]; }
+          this.dashboard.widgets = (this.dashboard.widgets || []).filter(w => w.id !== widgetId);
+          // Clean up any targeted filters pointing to this widget
+          this.globalFilters.forEach(f => {
+            if (f.scope === 'targeted' && f.targets) {
+              f.targets = f.targets.filter(t => t !== widgetId);
+            }
+          });
+          this.autoSave();
+        },
+
+        syncLayoutAndSave() {
+          if (!this.grid) return;
+          this.grid.getGridItems().forEach(el => {
+            const id = el.getAttribute('gs-id');
+            const node = el.gridstackNode;
+            if (!id || !node) return;
+            const widget = (this.dashboard.widgets || []).find(x => x.id === id);
+            if (widget) { widget.x = node.x; widget.y = node.y; widget.w = node.w; widget.h = node.h; }
+          });
+          this.autoSave();
+        },
+
+        autoSave() {
+          if (this._saveTimeout) clearTimeout(this._saveTimeout);
+          this._saveTimeout = setTimeout(() => this.saveDashboard(), 500);
+        },
+
+        async saveDashboard() {
+          this.saveIndicator = 'saving';
+          try {
+            const res = await fetch(`/api/tenants/${this.$store.app.tenantId}/dashboards/${this.dashboard.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                name: this.dashboard.name,
+                widgets: this.dashboard.widgets,
+                global_filters: this.globalFilters,
+              }),
+            });
+            this.saveIndicator = res.ok ? 'saved' : 'error';
+          } catch { this.saveIndicator = 'error'; }
+          setTimeout(() => { if (this.saveIndicator !== 'error') this.saveIndicator = 'idle'; }, 2000);
+        },
+
+        escHtml(s) {
+          return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        },
+      }));
+    });
+  </script>
+</div>
+{%endblock%}

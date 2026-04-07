@@ -1,0 +1,358 @@
+{% extends "layouts/base.html" %}
+
+{% block navbar %}{% endblock %}
+
+{%block content%}
+<div x-data="registrationWizard()" class="min-h-screen">
+  <div class="grid md:grid-cols-2 lg:grid-cols-3 items-center lg:gap-10 gap-4">
+    <div class="max-md:order-1 h-screen min-h-full min-w-full bg-primary relative overflow-hidden"></div>
+
+    <div class="lg:col-span-2 max-w-lg w-full p-4 mx-auto">
+
+      <!-- ═══════════════════════════════════════════════════════════════ -->
+      <!-- STEP 1: Create Account                                        -->
+      <!-- ═══════════════════════════════════════════════════════════════ -->
+      <div x-show="currentStep === 1" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-x-4" x-transition:enter-end="opacity-100 translate-x-0">
+        <div class="mb-5">
+          <h3 class="text-4xl font-extrabold mt-10">Register</h3>
+          <p class="text-sm my-2">Already have an account?
+            <a href="/login" class="text-primary font-semibold hover:underline ml-1 whitespace-nowrap">Login here</a>
+          </p>
+        </div>
+
+        <div>
+          <div class="mb-4">
+            <label class="text-sm block mb-1">Email</label>
+            <label class="input input-sm input-bordered flex items-center gap-2">
+              <i class="ti ti-mail"></i>
+              <input x-model="payload.email" type="text" class="grow" placeholder="Email" />
+            </label>
+          </div>
+          <div class="mb-4">
+            <label class="text-sm block mb-1">Display Name</label>
+            <label class="input input-sm input-bordered flex items-center gap-2">
+              <i class="ti ti-label"></i>
+              <input x-model="payload.display_name" type="text" class="grow" placeholder="Display Name" />
+            </label>
+          </div>
+          <div class="mb-4">
+            <div class="flex justify-between">
+              <label class="text-sm block mb-1">
+                <i x-show="showPasswordWarning" class="ti ti-alert-triangle text-error mr-1 my-auto"></i>Password
+              </label>
+            </div>
+            <div class="flex flex-row gap-x-4">
+              <input x-model="payload.password" placeholder="Create password" class="input input-sm grow input-bordered" type="password"/>
+              <input x-model="payload.password2" placeholder="Verify password" class="input input-sm grow input-bordered" type="password"/>
+            </div>
+            <p x-show="payload.password && payload.password2 && payload.password !== payload.password2" class="mt-2 text-xs text-error">Passwords do not match.</p>
+            <p x-show="payload.password && payload.password2 && payload.password === payload.password2 && payload.password.length < 12" class="mt-2 text-xs text-error">Passwords must be at least 12 characters.</p>
+          </div>
+          <div class="mt-4">
+            <button @click="submitRegistration" :disabled="!accountReady || isSubmitting" class="btn btn-primary btn-block">
+              <span x-show="isSubmitting" class="loading loading-spinner loading-sm"></span>
+              <span x-text="isSubmitting ? 'Creating account...' : 'Continue'"></span>
+            </button>
+          </div>
+
+          {%if config.ENABLE_GOOGLE_AUTH or config.ENABLE_MICROSOFT_AUTH%}
+          <div class="divider text-xs font-semibold">OR</div>
+          <div class="flex flex-row gap-x-4 justify-between">
+            {%if config.ENABLE_GOOGLE_AUTH%}
+            <a href="{{url_for('auth.google_auth', flow='register')}}"
+               :class="{'animate-bounce border border-primary': highlightProvider === 'google'}"
+               class="btn grow">
+              <i class="ti ti-brand-google text-error text-2xl"></i>Register with Google
+            </a>
+            {%endif%}
+            {%if config.ENABLE_MICROSOFT_AUTH%}
+            <a href="{{url_for('auth.microsoft_auth', flow='register')}}"
+               :class="{'animate-bounce border border-primary': highlightProvider === 'microsoft'}"
+               class="btn grow">
+              <i class="ti ti-brand-azure text-info text-2xl"></i>Register with Microsoft
+            </a>
+            {%endif%}
+          </div>
+          {%endif%}
+
+          <div x-show="adminEmail.length > 2" class="mt-4 text-xs" x-text="'Having issues? Reach out to ' + adminEmail"></div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════════════════════ -->
+      <!-- STEP 2: Create Tenant / Workspace                             -->
+      <!-- ═══════════════════════════════════════════════════════════════ -->
+      <div x-show="currentStep === 2" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-x-4" x-transition:enter-end="opacity-100 translate-x-0">
+        <div class="mb-5">
+          <h3 class="text-4xl font-extrabold mt-10">Create Workspace</h3>
+          <p class="text-sm my-2">Welcome<span x-show="userName" x-text="', ' + userName"></span>! Let's set up your workspace.</p>
+        </div>
+
+        <div>
+          <div class="mb-4">
+            <label class="text-sm block mb-1">Workspace Name</label>
+            <label class="input input-sm input-bordered flex items-center gap-2">
+              <i class="ti ti-buildings"></i>
+              <input x-model="payload.tenant" type="text" class="grow" placeholder="Your organization or team name" />
+            </label>
+          </div>
+          <div class="mt-4">
+            <button @click="submitTenant" :disabled="!tenantReady || isSubmitting" class="btn btn-primary btn-block">
+              <span x-show="isSubmitting" class="loading loading-spinner loading-sm"></span>
+              <span x-text="isSubmitting ? 'Creating workspace...' : 'Continue'"></span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════════════════════ -->
+      <!-- STEP 3: Verify Email                                          -->
+      <!-- ═══════════════════════════════════════════════════════════════ -->
+      <div x-show="currentStep === 3" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 translate-x-4" x-transition:enter-end="opacity-100 translate-x-0">
+        <div class="mb-5">
+          <h3 class="text-4xl font-extrabold mt-10">Verify Email</h3>
+          <p class="text-sm my-2">We need to verify your email address to complete setup.</p>
+        </div>
+
+        <div>
+          <div class="mb-4 p-4 bg-base-200 rounded-lg">
+            <p class="text-sm">
+              <span x-show="!emailSent">Click the button below to send a verification code to <strong x-text="payload.email"></strong>.</span>
+              <span x-show="emailSent">A verification code has been sent to <strong x-text="payload.email"></strong>. Please check your inbox (and spam folder).</span>
+            </p>
+          </div>
+
+          <div x-show="emailSent" class="mb-4">
+            <label class="text-sm block mb-1">Verification Code</label>
+            <label class="input input-sm input-bordered flex items-center gap-2">
+              <i class="ti ti-shield-check"></i>
+              <input x-model="confirmationCode" type="text" class="grow" placeholder="Enter code from email" />
+            </label>
+          </div>
+
+          <div class="flex flex-row gap-x-2 mt-4">
+            <button x-show="!emailSent" @click="sendVerificationEmail" :disabled="isSubmitting" class="btn btn-primary btn-block">
+              <span x-show="isSubmitting" class="loading loading-spinner loading-sm"></span>
+              <span x-text="isSubmitting ? 'Sending...' : 'Send Verification Email'"></span>
+            </button>
+            <template x-if="emailSent">
+              <div class="flex flex-row gap-x-2 w-full">
+                <button @click="verifyCode" :disabled="!confirmationCode || isSubmitting" class="btn btn-primary grow">
+                  <span x-show="isSubmitting" class="loading loading-spinner loading-sm"></span>
+                  <span x-text="isSubmitting ? 'Verifying...' : 'Verify'"></span>
+                </button>
+                <button @click="sendVerificationEmail" :disabled="!canResend || isSubmitting" class="btn btn-outline btn-sm self-center">
+                  Resend
+                </button>
+              </div>
+            </template>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════════════════════════════════════════════════════════════ -->
+      <!-- STEP 4: Done                                                  -->
+      <!-- ═══════════════════════════════════════════════════════════════ -->
+      <div x-show="currentStep === 4" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
+        <div class="mb-5 text-center mt-20">
+          <div class="text-6xl mb-4"><i class="ti ti-circle-check text-success"></i></div>
+          <h3 class="text-4xl font-extrabold">You're all set!</h3>
+          <p class="text-sm my-4">Your account is ready. Redirecting you now...</p>
+          <span class="loading loading-dots loading-md text-primary"></span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+  function registrationWizard() {
+      return {
+          // ── Config ──
+          adminEmail: "{{config.HELP_EMAIL}}",
+
+          // ── Server-seeded state (set when returning from OAuth or page reload) ──
+          serverState: {{ registration_state | tojson }},
+
+          // ── Wizard state ──
+          currentStep: 1,
+          isSubmitting: false,
+          requiresEmailVerification: true,
+          showPasswordWarning: false,
+
+          // ── Account (Step 1) ──
+          payload: {
+              email: "",
+              display_name: "",
+              password: "",
+              password2: "",
+              tenant: ""
+          },
+          userId: null,
+          userName: "",
+          highlightProvider: "",
+
+          // ── Email verification (Step 3) ──
+          emailSent: false,
+          confirmationCode: "",
+          canResend: true,
+
+          // ── Computed ──
+          get accountReady() {
+              const p = this.payload
+              if (!p.email || !p.email.includes("@")) return false
+              if (!p.display_name) return false
+              if (!p.password || p.password !== p.password2 || p.password.length < 12) return false
+              return true
+          },
+          get tenantReady() {
+              return !!this.payload.tenant && this.payload.tenant.trim().length > 0
+          },
+
+          // ── Init ──
+          init() {
+              // Pre-fill from URL params (e.g., redirected from login with ?email=)
+              const params = new URLSearchParams(window.location.search)
+              this.payload.email = params.get("email") || ""
+              this.payload.display_name = params.get("displayName") || ""
+              this.highlightProvider = params.get("provider") || ""
+
+              // If server provided state (e.g., returning from OAuth), pick up where we left off
+              if (this.serverState.user_id) {
+                  this.userId = this.serverState.user_id
+                  this.userName = this.serverState.display_name || ""
+                  this.payload.email = this.serverState.email || this.payload.email
+                  this.requiresEmailVerification = !this.serverState.confirmed
+
+                  if (this.serverState.has_tenants) {
+                      if (this.serverState.confirmed) {
+                          this.finish()
+                      } else {
+                          this.currentStep = 3
+                          // Auto-fill code from email link and verify
+                          const code = params.get("code")
+                          if (code) {
+                              this.emailSent = true
+                              this.confirmationCode = code
+                              this.$nextTick(() => this.verifyCode())
+                          }
+                      }
+                  } else {
+                      this.currentStep = 2
+                  }
+              }
+          },
+
+          // ── Step 1: Register account ──
+          submitRegistration() {
+              if (!this.accountReady || this.isSubmitting) return
+              this.isSubmitting = true
+
+              request("POST", "{{url_for('auth.api_register')}}",
+                  (data) => {
+                      this.isSubmitting = false
+                      this.userId = data.user_id
+                      this.userName = data.display_name || this.payload.display_name
+                      this.requiresEmailVerification = !data.confirmed
+
+                      if (data.has_tenants) {
+                          // Existing user with tenants (login path)
+                          if (data.confirmed) {
+                              this.finish()
+                          } else {
+                              this.currentStep = 3
+                          }
+                      } else {
+                          this.currentStep = 2
+                      }
+                  },
+                  (error) => {
+                      this.isSubmitting = false
+                      toast(error.message, "error")
+                  },
+                  {
+                      email: this.payload.email,
+                      display_name: this.payload.display_name,
+                      password: this.payload.password,
+                      password2: this.payload.password2
+                  }
+              )
+          },
+
+          // ── Step 2: Create tenant ──
+          submitTenant() {
+              if (!this.tenantReady || this.isSubmitting) return
+              this.isSubmitting = true
+
+              request("POST", "/api/tenants",
+                  (data) => {
+                      this.isSubmitting = false
+                      toast("Workspace created!", "success")
+
+                      if (this.requiresEmailVerification) {
+                          this.currentStep = 3
+                      } else {
+                          this.finish()
+                      }
+                  },
+                  (error) => {
+                      this.isSubmitting = false
+                      toast(error.message, "error")
+                  },
+                  {
+                      name: this.payload.tenant,
+                      contact_email: this.payload.email
+                  }
+              )
+          },
+
+          // ── Step 3: Email verification ──
+          sendVerificationEmail() {
+              if (this.isSubmitting) return
+              this.isSubmitting = true
+
+              request("POST", `/api/users/${this.userId}/send-confirmation`,
+                  (data) => {
+                      this.isSubmitting = false
+                      this.emailSent = true
+                      this.canResend = false
+                      toast("Verification email sent. Check your inbox.", "success")
+                      setTimeout(() => { this.canResend = true }, 30000)
+                  },
+                  (error) => {
+                      this.isSubmitting = false
+                      toast(error.message, "error")
+                  }
+              )
+          },
+
+          verifyCode() {
+              if (!this.confirmationCode || this.isSubmitting) return
+              this.isSubmitting = true
+
+              request("POST", `/api/users/${this.userId}/verify-confirmation-code`,
+                  (data) => {
+                      this.isSubmitting = false
+                      toast("Email verified!", "success")
+                      this.finish()
+                  },
+                  (error) => {
+                      this.isSubmitting = false
+                      toast(error.message, "error")
+                  },
+                  { code: this.confirmationCode }
+              )
+          },
+
+          // ── Finish ──
+          finish() {
+              this.currentStep = 4
+              setTimeout(() => {
+                  window.location.href = "/"
+              }, 2000)
+          }
+      }
+  }
+  </script>
+</div>
+{%endblock%}

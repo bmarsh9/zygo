@@ -1,0 +1,262 @@
+{% extends "layouts/base.html" %}
+
+{% block page_title %}Dashboards{% endblock %}
+{% block page_content %}
+<div role="alert" class="alert mb-4">
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+    class="stroke-warning h-6 w-6 shrink-0">
+    <path
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+  </svg>
+  <span>Create custom dashboards to visualize and monitor your flows. Dashboards leverage data within tables.</span>
+</div>
+<div x-data="dashboardsList()">
+
+    <!-- Search + controls -->
+    <div class="flex items-center justify-between gap-3 mb-3">
+        <label class="input input-sm input-bordered flex items-center gap-2 w-72">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 opacity-50" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+            </svg>
+            <input type="text" x-model="search" placeholder="Search dashboards…" class="grow" />
+        </label>
+        <div class="flex items-center gap-2">
+            <span class="text-xs opacity-40" x-text="filteredItems.length + ' dashboards'"></span>
+            <button @click="loadDashboards()" class="btn btn-sm btn-ghost border border-base-300 tooltip" data-tip="Refresh">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/>
+                </svg>
+            </button>
+            <button x-show="$store.app.isEditor || $store.app.user.super" @click="createDashboard()" class="btn btn-sm btn-primary">New Dashboard</button>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="card bg-base-100 border border-base-300 overflow-hidden">
+
+        <!-- Loading -->
+        <div x-show="loading" class="flex items-center justify-center py-16">
+            <span class="loading loading-dots loading-md text-primary"></span>
+        </div>
+
+        <!-- Empty -->
+        <div x-show="!loading && filteredItems.length === 0 && search === ''" class="text-center py-16 opacity-30 text-sm">
+            No dashboards yet
+        </div>
+
+        <!-- No results -->
+        <div x-show="!loading && filteredItems.length === 0 && search !== ''" class="text-center py-16 opacity-30 text-sm">
+            No dashboards matching "<span x-text="search"></span>"
+        </div>
+
+        <div x-show="!loading && filteredItems.length > 0">
+            <table class="table table-sm w-full">
+                <thead class="bg-base-200 text-xs uppercase tracking-wide">
+                    <tr>
+                        <th @click="setSort('name')" class="cursor-pointer select-none">
+                            <div class="flex items-center gap-1">
+                                Name
+                                <span x-show="sortField === 'name'" x-text="sortAsc ? '↑' : '↓'" class="opacity-50"></span>
+                            </div>
+                        </th>
+                        <th class="hidden sm:table-cell">Charts</th>
+                        <th @click="setSort('updated_at')" class="cursor-pointer select-none hidden md:table-cell">
+                            <div class="flex items-center gap-1">
+                                Updated
+                                <span x-show="sortField === 'updated_at'" x-text="sortAsc ? '↑' : '↓'" class="opacity-50"></span>
+                            </div>
+                        </th>
+                        <th @click="setSort('created_at')" class="cursor-pointer select-none hidden lg:table-cell">
+                            <div class="flex items-center gap-1">
+                                Created
+                                <span x-show="sortField === 'created_at'" x-text="sortAsc ? '↑' : '↓'" class="opacity-50"></span>
+                            </div>
+                        </th>
+                        <th class="w-10"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="d in pagedItems" :key="d.id">
+                        <tr class="hover:bg-base-200/50 cursor-pointer transition-colors" @click="window.location.href = '/dashboards/' + d.id">
+                            <td>
+                                <span class="text-xs font-medium" x-text="d.name"></span>
+                            </td>
+                            <td class="hidden sm:table-cell">
+                                <span class="gray-badge" x-text="(d.widgets || []).length + ' chart' + ((d.widgets || []).length !== 1 ? 's' : '')"></span>
+                            </td>
+                            <td class="hidden md:table-cell">
+                                <span class="text-xs opacity-50" x-text="formatDate(d.updated_at)"></span>
+                            </td>
+                            <td class="hidden lg:table-cell">
+                                <span class="text-xs opacity-50" x-text="formatDate(d.created_at)"></span>
+                            </td>
+                            <td>
+                                <button
+                                    @click.stop="confirmDelete(d)"
+                                    class="btn btn-xs btn-ghost opacity-40 hover:opacity-100 hover:text-error">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+
+            <!-- Pagination -->
+            <div class="flex items-center justify-between px-4 py-3 border-t border-base-200">
+                <span class="text-xs opacity-40"
+                    x-text="`Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, filteredItems.length)} of ${filteredItems.length}`">
+                </span>
+                <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-1">
+                        <button @click="page--" :disabled="page === 1" class="btn btn-xs btn-ghost">‹</button>
+                        <template x-for="p in totalPages" :key="p">
+                            <button
+                                @click="page = p"
+                                class="btn btn-xs"
+                                :class="page === p ? 'btn-primary' : 'btn-ghost'"
+                                x-text="p">
+                            </button>
+                        </template>
+                        <button @click="page++" :disabled="page === totalPages" class="btn btn-xs btn-ghost">›</button>
+                    </div>
+                    <select x-model.number="pageSize" @change="page = 1" class="select select-xs select-bordered w-20">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Delete modal -->
+    <div class="modal" :class="{ 'modal-open': deleteModal.open }">
+        <div class="modal-box max-w-sm">
+            <form method="dialog">
+                <button @click="deleteModal.open = false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+            </form>
+            <h3 class="font-bold text-lg">Delete dashboard?</h3>
+            <p class="text-sm font-semibold mt-1" x-text="deleteModal.name"></p>
+            <p class="text-sm opacity-60 mt-2">This will permanently delete the dashboard and all its widgets. This action cannot be undone.</p>
+            <div class="modal-action">
+                <button class="btn btn-sm" @click="deleteModal.open = false">Cancel</button>
+                <button class="btn btn-sm btn-error" :disabled="deleteModal.busy" @click="executeDelete()">
+                    <span x-show="deleteModal.busy" class="loading loading-spinner loading-xs"></span>
+                    Delete
+                </button>
+            </div>
+        </div>
+        <div class="modal-backdrop" @click="deleteModal.open = false"></div>
+    </div>
+
+    <script>
+    function dashboardsList() {
+        return {
+            dashboards:  [],
+            loading:     true,
+            search:      '',
+            sortField:   'updated_at',
+            sortAsc:     false,
+            page:        1,
+            pageSize:    25,
+            deleteModal: { open: false, id: null, name: '', busy: false },
+
+            get filteredItems() {
+                const q = this.search.toLowerCase().trim();
+                let rows = q
+                    ? this.dashboards.filter(d => d.name?.toLowerCase().includes(q))
+                    : [...this.dashboards];
+
+                rows.sort((a, b) => {
+                    const av = (a[this.sortField] ?? '').toString().toLowerCase();
+                    const bv = (b[this.sortField] ?? '').toString().toLowerCase();
+                    return this.sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+                });
+                return rows;
+            },
+
+            get totalPages() {
+                return Math.max(1, Math.ceil(this.filteredItems.length / this.pageSize));
+            },
+
+            get pagedItems() {
+                const start = (this.page - 1) * this.pageSize;
+                return this.filteredItems.slice(start, start + this.pageSize);
+            },
+
+            init() {
+                this.$watch('search',   () => { this.page = 1; });
+                this.$watch('pageSize', () => { this.page = 1; });
+                this.loadDashboards();
+            },
+
+            setSort(field) {
+                if (this.sortField === field) {
+                    this.sortAsc = !this.sortAsc;
+                } else {
+                    this.sortField = field;
+                    this.sortAsc   = true;
+                }
+                this.page = 1;
+            },
+
+            async loadDashboards() {
+                this.loading = true;
+                try {
+                    const res        = await fetch(`/api/tenants/${this.$store.app.tenantId}/dashboards`);
+                    this.dashboards  = await res.json();
+                } catch { this.dashboards = []; }
+                this.loading = false;
+            },
+
+            async createDashboard() {
+                try {
+                    const res = await fetch(`/api/tenants/${this.$store.app.tenantId}/dashboards`, {
+                        method:  'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body:    JSON.stringify({ name: 'Untitled Dashboard' }),
+                    });
+                    const d = await res.json();
+                    window.location.href = `/dashboards/${d.id}`;
+                } catch { toast('Failed to create dashboard', 'error'); }
+            },
+
+            confirmDelete(dashboard) {
+                this.deleteModal = { open: true, id: dashboard.id, name: dashboard.name, busy: false };
+            },
+
+            async executeDelete() {
+                if (!this.deleteModal.id) return;
+                this.deleteModal.busy = true;
+                try {
+                    await fetch(`/api/tenants/${this.$store.app.tenantId}/dashboards/${this.deleteModal.id}`, { method: 'DELETE' });
+                    this.dashboards = this.dashboards.filter(d => d.id !== this.deleteModal.id);
+                    toast('Dashboard deleted');
+                } catch { toast('Failed to delete', 'error'); }
+                this.deleteModal = { open: false, id: null, name: '', busy: false };
+            },
+
+            formatDate(iso) {
+                if (!iso) return '—';
+                const d    = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+                const diff = Math.floor((Date.now() - d.getTime()) / 1000);
+                if (diff < 60)     return 'just now';
+                if (diff < 3600)   return Math.floor(diff / 60)    + 'm ago';
+                if (diff < 86400)  return Math.floor(diff / 3600)  + 'h ago';
+                if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+                return d.toLocaleDateString();
+            },
+        };
+    }
+    </script>
+</div>
+{% endblock %}

@@ -1,0 +1,13 @@
+{
+  "name": "flowchart-tailwind",
+  "private": true,
+  "scripts": {
+    "build": "npx tailwindcss -c tailwind.config.js -i main.css -o ../app/static/css/output.css --minify",
+    "watch": "npx tailwindcss -c tailwind.config.js -i main.css -o ../app/static/css/output.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4",
+    "@tailwindcss/typography": "^0.5",
+    "daisyui": "^4.12"
+  }
+}

@@ -1,0 +1,11 @@
+.driver-popover {
+    font-family: 'Inter', sans-serif;
+}
+.driver-popover-title {
+    font-size: 14px;
+    font-weight: 700;
+}
+.driver-popover-description {
+    font-size: 12px;
+    line-height: 1.6;
+}

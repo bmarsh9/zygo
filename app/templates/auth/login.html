@@ -1,0 +1,104 @@
+{% extends "layouts/base.html" %}
+
+{% block navbar %}{% endblock %}
+
+{%block content%}
+<div x-data="login()" class="min-h-screen">
+  <div class="grid md:grid-cols-2 lg:grid-cols-3 items-center lg:gap-10 gap-4">
+    <div class="max-md:order-1 h-screen min-h-full min-w-full bg-primary"></div>
+    <div class="lg:col-span-2 max-w-lg w-full p-4 mx-auto">
+      <div class="mb-5">
+        <h3 class="text-4xl font-extrabold mt-10">Login</h3>
+        <p class="text-xs text-primary mt-2">Welcome to {{config.APP_NAME}}</p>
+        {%if config.settings.is_self_registration_enabled%}
+        <p class="text-sm my-2">Interested in joining? <a href="/register" class="text-warning font-semibold hover:underline ml-1 whitespace-nowrap">Sign up here</a></p>
+        {%endif%}
+      </div>
+      <div class="mb-4">
+        <label class="text-sm block mb-1">Email</label>
+        <label class="input input-sm input-bordered flex items-center gap-2">
+          <i class="ti ti-mail"></i>
+          <input x-model="payload.email" @keydown.enter="submitLogin" type="text" class="grow" placeholder="Email" />
+        </label>
+      </div>
+      <div class="mb-4">
+        <div class="flex justify-between">
+            <label class="text-sm block mb-1">Password</label>
+            <a href="/reset-password" class="text-primary font-semibold hover:underline ml-1 whitespace-nowrap text-xs">Forgot Password?</a>
+        </div>
+        <label class="input input-sm input-bordered flex items-center gap-2">
+          <i class="ti ti-lock"></i>
+          <input x-model="payload.password" @keydown.enter="submitLogin" placeholder="Enter password" class="grow" type="password"/>
+        </label>
+      </div>
+      <p x-show="errorMessage" x-text="errorMessage" class="mb-2 text-xs text-error"></p>
+      <div class="mt-4">
+        <button @click="submitLogin" :disabled="!readyToGo || isSubmitting" class="btn btn-primary btn-block">
+          <span x-show="isSubmitting" class="loading loading-spinner loading-sm"></span>
+          <span x-text="isSubmitting ? 'Logging in...' : 'Login'"></span>
+        </button>
+      </div>
+      {%if config.ENABLE_GOOGLE_AUTH or config.ENABLE_MICROSOFT_AUTH%}
+      <div class="divider text-xs font-semibold">OR</div>
+      <div class="flex flex-row gap-x-4 justify-between">
+        {%if config.ENABLE_GOOGLE_AUTH%}
+        <a href="{{url_for('auth.google_auth', flow='login')}}" class="btn grow"><i class="ti ti-brand-google text-error text-2xl"></i>Continue with Google</a>
+        {%endif%}
+        {%if config.ENABLE_MICROSOFT_AUTH%}
+        <a href="{{url_for('auth.microsoft_auth', flow='login')}}" class="btn grow"><i class="ti ti-brand-azure text-info text-2xl"></i>Continue with Microsoft</a>
+        {%endif%}
+      </div>
+      {%endif%}
+      <div x-show="adminEmail.length>2" class="mt-4 text-xs" x-text="'Having issues? Reach out to '+adminEmail"></div>
+    </div>
+  </div>
+
+  <script>
+  function login(){
+      return {
+          init() {
+            this.payload.email = this.getURLParam("email")
+          },
+          adminEmail: "{{config.HELP_EMAIL}}",
+          payload: {
+              email: "",
+              password: ""
+          },
+          isSubmitting: false,
+          errorMessage: "",
+          get readyToGo() {
+              if (!this.payload.email || !this.payload.email.includes("@")) return false
+              if (!this.payload.password) return false
+              return true
+          },
+          getURLParam: function(param, defaultValue="") {
+            var queryParams = new URLSearchParams(window.location.search);
+            return queryParams.get(param) || defaultValue;
+          },
+          submitLogin: function() {
+              if (!this.readyToGo || this.isSubmitting) return
+              this.isSubmitting = true
+              this.errorMessage = ""
+
+              request("POST", "{{url_for('auth.post_login', next=request.args.get('next'))}}",
+                  (data) => {
+                      this.isSubmitting = false
+                      if (data.redirect) {
+                          window.location.href = data.redirect
+                      }
+                  },
+                  (error) => {
+                      this.isSubmitting = false
+                      this.errorMessage = error.message
+                  },
+                  {
+                      email: this.payload.email,
+                      password: this.payload.password
+                  }
+              )
+          }
+      }
+  }
+  </script>
+</div>
+{%endblock%}

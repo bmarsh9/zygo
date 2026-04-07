@@ -1,0 +1,453 @@
+{% extends "layouts/base.html" %}
+
+{% block page_title %}All Users{% endblock %}
+{% block page_content %}
+<div x-data="table()">
+    <div class="alert text-sm mb-2">
+        <i class="ti ti-info-circle text-lg"></i>
+        <p>This page will show all users (super admins and users from every tenant). If you want to view specific users scoped to a tenant, <a class="underline text-warning" href="/users">see here.</a></p>
+    </div>
+    <!-- Invite result alert -->
+    <div x-show="inviteAlert.show" x-transition class="alert alert-success mb-4">
+        <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-5 w-5" fill="none" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <div class="flex-1 min-w-0">
+            <p class="text-sm font-semibold" x-text="inviteAlert.title"></p>
+            <p class="text-xs mt-0.5 break-all opacity-70" x-text="inviteAlert.link"></p>
+        </div>
+        <button @click="copyLink(inviteAlert.link)" class="btn btn-xs">Copy link</button>
+        <button @click="inviteAlert.show = false" class="btn btn-xs btn-ghost btn-circle">✕</button>
+    </div>
+
+    <!-- Search + table controls -->
+    <div class="flex items-center justify-between gap-3 mb-3">
+        <label class="input input-sm input-bordered flex items-center gap-2 w-72">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 opacity-50" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+            </svg>
+            <input type="text" x-model="search" placeholder="Search by email…" class="grow" />
+        </label>
+        <div class="flex items-center gap-2">
+            <span class="text-xs opacity-40" x-text="filteredItems.length + ' users'"></span>
+            <button @click="getItems()" class="btn btn-sm btn-ghost border border-base-300 tooltip" data-tip="Refresh">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/>
+                </svg>
+            </button>
+            <button @click="exportCSV()" class="btn btn-sm btn-ghost border border-base-300 tooltip" data-tip="Export CSV">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3"/>
+                </svg>
+            </button>
+            <button class="btn btn-sm btn-primary" @click="openCreateModal()">Create User</button>
+        </div>
+    </div>
+
+    <!-- Table -->
+    <div class="card bg-base-100 border border-base-300 overflow-hidden">
+
+        <!-- Loading skeleton -->
+        <div x-show="loading" class="flex items-center justify-center py-16">
+            <span class="loading loading-dots loading-md text-primary"></span>
+        </div>
+
+        <!-- Empty state -->
+        <div x-show="!loading && filteredItems.length === 0" class="text-center py-16 opacity-30 text-sm">
+            No users found
+        </div>
+
+        <div x-show="!loading && filteredItems.length > 0">
+            <table class="table table-sm w-full">
+                <thead class="bg-base-200 text-xs uppercase tracking-wide">
+                    <tr>
+                        <th @click="setSort('email')" class="cursor-pointer select-none">
+                            <div class="flex items-center gap-1">
+                                Email
+                                <span x-show="sortField === 'email'" x-text="sortAsc ? '↑' : '↓'" class="opacity-50"></span>
+                            </div>
+                        </th>
+                        <th @click="setSort('display_name')" class="cursor-pointer select-none hidden sm:table-cell">
+                            <div class="flex items-center gap-1">
+                                Name
+                                <span x-show="sortField === 'display_name'" x-text="sortAsc ? '↑' : '↓'" class="opacity-50"></span>
+                            </div>
+                        </th>
+                        <th class="hidden md:table-cell">License</th>
+                        <th class="hidden md:table-cell">Super</th>
+                        <th class="hidden md:table-cell">Active</th>
+                        <th @click="setSort('date_added')" class="cursor-pointer select-none hidden lg:table-cell">
+                            <div class="flex items-center gap-1">
+                                Created
+                                <span x-show="sortField === 'date_added'" x-text="sortAsc ? '↑' : '↓'" class="opacity-50"></span>
+                            </div>
+                        </th>
+                        <th class="w-10"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="user in pagedItems" :key="user.id">
+                        <tr class="hover:bg-base-200/50 cursor-pointer transition-colors" @click="openEditModal(user)">
+                            <td>
+                                <div class="flex items-center gap-2">
+                                    <div class="avatar placeholder shrink-0">
+                                        <div class="bg-base-300 rounded-full w-6">
+                                            <span class="text-[10px] capitalize" x-text="user.email?.[0] ?? '?'"></span>
+                                        </div>
+                                    </div>
+                                    <span class="text-xs truncate max-w-[200px]" x-text="user.email"></span>
+                                </div>
+                            </td>
+                            <td class="hidden sm:table-cell">
+                                <span class="text-xs opacity-70" x-text="user.display_name || '—'"></span>
+                            </td>
+                            <td class="hidden md:table-cell">
+                                <span class="gray-badge" x-text="user.license"></span>
+                            </td>
+                            <td class="hidden md:table-cell">
+                                <span x-show="user.super" class="red-badge">Super</span>
+                                <span x-show="!user.super" class="text-xs opacity-30">—</span>
+                            </td>
+                            <td class="hidden md:table-cell">
+                                <span x-show="user.is_active" class="green-badge">Active</span>
+                                <span x-show="!user.is_active" class="gray-badge">Inactive</span>
+                            </td>
+                            <td class="hidden lg:table-cell">
+                                <span class="text-xs opacity-50" x-text="formatDate(user.date_added)"></span>
+                            </td>
+                            <td>
+                                <button @click.stop="openEditModal(user)" class="btn btn-xs btn-ghost opacity-40 hover:opacity-100">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 1 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Z"/>
+                                    </svg>
+                                </button>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+
+            <!-- Pagination -->
+            <div class="flex items-center justify-between px-4 py-3 border-t border-base-200">
+                <span class="text-xs opacity-40"
+                    x-text="`Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, filteredItems.length)} of ${filteredItems.length}`">
+                </span>
+                <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-1">
+                        <button @click="page--" :disabled="page === 1" class="btn btn-xs btn-ghost">‹</button>
+                        <template x-for="p in totalPages" :key="p">
+                            <button
+                                @click="page = p"
+                                class="btn btn-xs"
+                                :class="page === p ? 'btn-primary' : 'btn-ghost'"
+                                x-text="p"
+                            ></button>
+                        </template>
+                        <button @click="page++" :disabled="page === totalPages" class="btn btn-xs btn-ghost">›</button>
+                    </div>
+                    <select x-model.number="pageSize" @change="page = 1" class="select select-xs select-bordered w-20">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Create modal ───────────────────────────────────────────── -->
+    <div class="modal" :class="{ 'modal-open': showCreateModal }">
+        <div class="modal-box w-11/12 max-w-lg">
+            <form method="dialog">
+                <button @click="showCreateModal = false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+            </form>
+            <h3 class="font-bold text-lg mb-4">Create Super Admin</h3>
+
+            <div role="alert" class="alert alert-warning mb-4 opacity-80 text-xs">
+                <svg xmlns="http://www.w3.org/2000/svg" class="stroke-current shrink-0 h-5 w-5" fill="none" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+                <span>You are creating a <b>Super Admin</b> with unrestricted access to *all* tenants. For regular users, create users within <a href="/users" class="underline">Tenant Users</a>.</span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div class="col-span-2">
+                    <label class="block text-sm font-medium mb-1">Email</label>
+                    <input x-model="payload.email" type="email" placeholder="user@example.com" class="input input-sm input-bordered w-full" />
+                </div>
+                <div class="col-span-2 sm:col-span-1">
+                    <label class="block text-sm font-medium mb-1">License</label>
+                    <select x-model="payload.license" class="select select-sm select-bordered w-full">
+                        <option value="free">Free</option>
+                        <option value="silver">Silver</option>
+                        <option value="gold">Gold</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="modal-action">
+                <button class="btn btn-sm" @click="showCreateModal = false">Cancel</button>
+                <button class="btn btn-sm btn-primary" :disabled="!payload.email?.includes('@') || busy" @click="createUser()">
+                    <span x-show="busy" class="loading loading-spinner loading-xs"></span>
+                    Create
+                </button>
+            </div>
+        </div>
+        <div class="modal-backdrop" @click="showCreateModal = false"></div>
+    </div>
+
+    <!-- ── Edit modal ─────────────────────────────────────────────── -->
+    <div class="modal" :class="{ 'modal-open': showEditModal }">
+        <div class="modal-box w-11/12 max-w-2xl">
+            <form method="dialog">
+                <button @click="showEditModal = false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+            </form>
+            <h3 class="font-bold text-lg mb-4" x-text="'Edit: ' + (selectedItem.email ?? '')"></h3>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium mb-1">Email</label>
+                    <input x-model="selectedItem.email" type="email" class="input input-sm input-bordered w-full" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Display Name</label>
+                    <input x-model="selectedItem.display_name" type="text" class="input input-sm input-bordered w-full" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">License</label>
+                    <select x-model="selectedItem.license" class="select select-sm select-bordered w-full">
+                        <option value="free">Free</option>
+                        <option value="silver">Silver</option>
+                        <option value="gold">Gold</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Trial Period</label>
+                    <select x-model="selectedItem.trial_days" class="select select-sm select-bordered w-full">
+                        <option value="14">14 days</option>
+                        <option value="30">30 days</option>
+                        <option value="60">60 days</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium mb-1">Tenant Limit</label>
+                    <input x-model.number="selectedItem.tenant_limit" type="number" min="0" class="input input-sm input-bordered w-full" />
+                </div>
+                <div class="flex flex-col gap-3 pt-1">
+                    <label class="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" x-model="selectedItem.is_active" class="checkbox checkbox-sm" />
+                        <span class="text-sm">Active</span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" x-model="selectedItem.super" class="checkbox checkbox-sm" />
+                        <span class="text-sm">Super User</span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" x-model="selectedItem.can_user_create_tenant" class="checkbox checkbox-sm" />
+                        <span class="text-sm">Can Create Tenants</span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" :checked="!!selectedItem.email_confirmed_at" @change="selectedItem.email_confirmed_at = $event.target.checked ? new Date().toISOString() : null" class="checkbox checkbox-sm" />
+                        <span class="text-sm">Email Confirmed</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="modal-action">
+                <button class="btn btn-sm btn-error btn-outline" @click="openDeleteModal()">Deactivate</button>
+                <div class="flex-1"></div>
+                <button class="btn btn-sm" @click="showEditModal = false">Cancel</button>
+                <button class="btn btn-sm btn-primary" :disabled="busy" @click="updateUser()">
+                    <span x-show="busy" class="loading loading-spinner loading-xs"></span>
+                    Save
+                </button>
+            </div>
+        </div>
+        <div class="modal-backdrop" @click="showEditModal = false"></div>
+    </div>
+
+    <!-- ── Delete confirm modal ───────────────────────────────────── -->
+    <div class="modal" :class="{ 'modal-open': showDeleteModal }">
+        <div class="modal-box max-w-sm">
+            <form method="dialog">
+                <button @click="showDeleteModal = false" class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2">✕</button>
+            </form>
+            <h3 class="font-bold text-lg">Deactivate user?</h3>
+            <p class="text-sm opacity-60 mt-1" x-text="selectedItem.email"></p>
+            <p class="text-sm mt-3">This will mark the user as inactive. They will no longer be able to log in.</p>
+            <div class="modal-action">
+                <button class="btn btn-sm" @click="showDeleteModal = false">Cancel</button>
+                <button class="btn btn-sm btn-error" :disabled="busy" @click="deleteUser()">
+                    <span x-show="busy" class="loading loading-spinner loading-xs"></span>
+                    Deactivate
+                </button>
+            </div>
+        </div>
+        <div class="modal-backdrop" @click="showDeleteModal = false"></div>
+    </div>
+
+    <script>
+    function table() {
+        return {
+            // ── state ────────────────────────────────────────────────
+            items:           [],
+            loading:         true,
+            busy:            false,
+            search:          '',
+            sortField:       'date_added',
+            sortAsc:         false,
+            page:            1,
+            pageSize:        25,
+            selectedItem:    {},
+            payload:         { email: '', license: 'free' },
+            showCreateModal: false,
+            showEditModal:   false,
+            showDeleteModal: false,
+            inviteAlert:     { show: false, title: '', link: '' },
+
+            // ── computed ─────────────────────────────────────────────
+            get filteredItems() {
+                const q = this.search.toLowerCase().trim()
+                let rows = q
+                    ? this.items.filter(u => u.email?.toLowerCase().includes(q))
+                    : [...this.items]
+
+                rows.sort((a, b) => {
+                    const av = (a[this.sortField] ?? '').toString().toLowerCase()
+                    const bv = (b[this.sortField] ?? '').toString().toLowerCase()
+                    return this.sortAsc ? av.localeCompare(bv) : bv.localeCompare(av)
+                })
+                return rows
+            },
+
+            get totalPages() {
+                return Math.max(1, Math.ceil(this.filteredItems.length / this.pageSize))
+            },
+
+            get pagedItems() {
+                const start = (this.page - 1) * this.pageSize
+                return this.filteredItems.slice(start, start + this.pageSize)
+            },
+
+            // ── lifecycle ────────────────────────────────────────────
+            init() {
+                this.$watch('search',   () => { this.page = 1 })
+                this.$watch('pageSize', () => { this.page = 1 })
+                this.getItems()
+            },
+
+            // ── helpers ──────────────────────────────────────────────
+            setSort(field) {
+                if (this.sortField === field) {
+                    this.sortAsc = !this.sortAsc
+                } else {
+                    this.sortField = field
+                    this.sortAsc   = true
+                }
+                this.page = 1
+            },
+
+            formatDate(iso) {
+                if (!iso) return '—'
+                const d    = new Date(iso.endsWith('Z') ? iso : iso + 'Z')
+                const diff = Math.floor((Date.now() - d.getTime()) / 1000)
+                if (diff < 3600)   return Math.floor(diff / 60)    + 'm ago'
+                if (diff < 86400)  return Math.floor(diff / 3600)  + 'h ago'
+                if (diff < 604800) return Math.floor(diff / 86400) + 'd ago'
+                return d.toLocaleDateString()
+            },
+
+            copyLink(link) {
+                navigator.clipboard.writeText(link).then(() => toast('Link copied'))
+            },
+
+            exportCSV() {
+                const headers = ['id', 'email', 'display_name', 'license', 'super', 'is_active', 'date_added']
+                const rows    = this.filteredItems.map(u => headers.map(h => JSON.stringify(u[h] ?? '')).join(','))
+                const csv     = [headers.join(','), ...rows].join('\n')
+                const a       = Object.assign(document.createElement('a'), {
+                    href:     URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
+                    download: 'users.csv',
+                })
+                a.click()
+            },
+
+            // ── modal openers ────────────────────────────────────────
+            openCreateModal() {
+                this.payload         = { email: '', license: 'free' }
+                this.showCreateModal = true
+            },
+
+            openEditModal(user) {
+                this.selectedItem  = { ...user }
+                this.showEditModal = true
+            },
+
+            openDeleteModal() {
+                this.showEditModal   = false
+                this.showDeleteModal = true
+            },
+
+            // ── API calls ────────────────────────────────────────────
+            getItems() {
+                this.loading = true
+                request('GET', '/api/users',
+                    data => { this.items = data; this.loading = false },
+                    err  => { toast(err.message, 'error'); this.loading = false }
+                )
+            },
+
+            createUser() {
+                if (!this.payload.email) { toast('Email is required', 'error'); return }
+                this.busy = true
+                request('POST', '/api/users',
+                    data => {
+                        toast('User created')
+                        this.getItems()
+                        this.showCreateModal = false
+                        this.busy            = false
+                        const sent           = data['sent-email']
+                        this.inviteAlert = {
+                            show:  true,
+                            title: sent
+                                ? 'Invite email sent. You can also share the link below.'
+                                : 'Email is not configured — share this invite link with the user.',
+                            link: data.url ?? '',
+                        }
+                    },
+                    err => { toast(err.message, 'error'); this.busy = false }
+                , this.payload)
+            },
+
+            updateUser() {
+                if (!this.selectedItem.email) { toast('Email is required', 'error'); return }
+                this.busy = true
+                const payload = {
+                    email:                   this.selectedItem.email,
+                    display_name:            this.selectedItem.display_name,
+                    super:                   this.selectedItem.super,
+                    can_user_create_tenant:  this.selectedItem.can_user_create_tenant,
+                    is_active:               this.selectedItem.is_active,
+                    tenant_limit:            this.selectedItem.tenant_limit,
+                    license:                 this.selectedItem.license,
+                    trial_days:              this.selectedItem.trial_days,
+                    email_confirmed:         this.selectedItem.email_confirmed_at,
+                }
+                request('PUT', `/api/users/${this.selectedItem.id}`,
+                    data => { toast('User updated'); this.getItems(); this.showEditModal = false; this.busy = false },
+                    err  => { toast(err.message, 'error'); this.busy = false }
+                , payload)
+            },
+
+            deleteUser() {
+                this.busy = true
+                request('DELETE', `/api/users/${this.selectedItem.id}`,
+                    ()  => { toast('User deactivated'); this.getItems(); this.showDeleteModal = false; this.busy = false },
+                    err => { toast(err.message, 'error'); this.busy = false }
+                )
+            },
+        }
+    }
+    </script>
+</div>
+{% endblock %}

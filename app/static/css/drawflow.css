@@ -1,0 +1,633 @@
+/* ══════════════════════════════════════════════════════════════
+   Zygo — Custom styles (Drawflow overrides & components)
+   ══════════════════════════════════════════════════════════════ */
+
+/* ── Drawflow connection overrides ─────────────────────────── */
+[x-cloak] { display: none !important; }
+
+.drawflow .connection .main-path {
+  stroke-width: 2px;
+  stroke: oklch(var(--p));
+  opacity: 0.7;
+  stroke-dasharray: none;
+}
+.drawflow .connection .back-path {
+  stroke-width: 10px;
+}
+.drawflow .connection .main-path:hover {
+  stroke: oklch(var(--p));
+  stroke-width: 3px;
+  opacity: 1;
+}
+
+/* Failure output connections */
+.drawflow svg .connection.output_2 .main-path {
+  stroke: oklch(var(--wa)) !important;
+  opacity: 0.85 !important;
+}
+.drawflow svg .connection.output_2 .main-path:hover {
+  stroke: oklch(var(--wa)) !important;
+  stroke-width: 3px !important;
+  opacity: 1 !important;
+}
+
+/* ── Flow path highlighting ────────────────────────────────── */
+.drawflow svg.connection .main-path.path-taken.path-taken {
+  stroke: oklch(var(--su));
+  stroke-width: 2.5px;
+  opacity: 1;
+  stroke-dasharray: 8 4;
+  animation: flowDash 0.6s linear infinite;
+}
+
+.drawflow svg.connection .main-path.path-failed.path-failed {
+  stroke: oklch(var(--er));
+  stroke-width: 2.5px;
+  opacity: 1;
+  stroke-dasharray: 8 4;
+  animation: flowDash 0.6s linear infinite;
+}
+
+@keyframes flowDash {
+  to {
+    stroke-dashoffset: -12;
+  }
+}
+
+.drawflow svg .connection .main-path.path-dimmed {
+  stroke: oklch(var(--b3));
+  stroke-width: 2px;
+  opacity: 0.4;
+}
+
+/* ── Drawflow node overrides ───────────────────────────────── */
+
+.drawflow .drawflow-node {
+  background: oklch(var(--b1));
+  border: 1.5px solid oklch(var(--b3));
+  border-radius: 10px;
+  padding: 0;
+  min-width: 168px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.08), 0 4px 16px rgba(0,0,0,0.06);
+  transition: border-color 0.15s, box-shadow 0.15s;
+  overflow: visible;
+}
+.drawflow .drawflow-node.selected,
+#drawflow .drawflow-node.selected {
+  background: oklch(var(--b1));
+  border-color: oklch(var(--p));
+  animation: selectedPulse 1s ease-in-out infinite;
+}
+@keyframes selectedPulse {
+  0%, 100% { box-shadow: 0 0 0 3px oklch(var(--p) / 0.15), 0 1px 4px rgba(0,0,0,0.08);}
+  50%      { box-shadow: 0 0 0 6px oklch(var(--p) / 0.3), 0 1px 8px rgba(0,0,0,0.12);}
+}
+.drawflow .drawflow-node .drawflow_content_node {
+  padding: 0;
+}
+
+
+/* ── Ports ──────────────────────────────────────────────────── */
+/* Prevent Drawflow flex containers from stretching ports */
+.drawflow .drawflow-node .input,
+.drawflow .drawflow-node .output {
+  background: oklch(var(--b1));
+  border: 2px solid oklch(var(--p));
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  max-width: 10px;
+  max-height: 10px;
+  border-radius: 50%;
+  transition: background 0.12s, transform 0.12s;
+  /* Override DaisyUI .input styles bleeding in */
+  padding: 0;
+  font-size: inherit;
+  line-height: normal;
+  flex-shrink: 0;
+  appearance: auto;
+  align-self: center;
+  cursor: pointer !important;
+}
+.drawflow .drawflow-node .input {
+  left: -20px;
+
+}
+.drawflow-node.path-running {
+  border-color: oklch(var(--p)) !important;
+  animation: runningPulse 1s ease-in-out infinite;
+}
+@keyframes runningPulse {
+  0%, 100% { box-shadow: 0 0 0 3px oklch(var(--p) / 0.1); }
+  50%      { box-shadow: 0 0 0 6px oklch(var(--p) / 0.3); }
+}
+.jt-highlight {
+  background: oklch(var(--wa) / 0.3);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+.drawflow .drawflow-node .input:hover,
+.drawflow .drawflow-node .output:hover {
+  background: oklch(var(--p));
+  transform: scale(1.4);
+}
+.drawflow .drawflow-node .output.output-failure {
+  border-color: oklch(var(--wa));
+  background: oklch(var(--wa) / 0.15);
+}
+.drawflow .drawflow-node .output.output-failure:hover {
+  background: oklch(var(--wa));
+}
+
+/* ── Path highlight classes on nodes ───────────────────────── */
+
+.drawflow-node.path-active {
+  border-color: oklch(var(--su)) !important;
+  box-shadow: 0 0 0 3px oklch(var(--su) / 0.2);
+}
+.drawflow-node.path-active.selected {
+  border-color: oklch(var(--p)) !important;
+  animation: selectedPulseGreen 1s ease-in-out infinite;
+}
+
+@keyframes selectedPulseGreen {
+  0%, 100% { box-shadow: 0 0 0 3px oklch(var(--su) / 0.2), 0 0 0 6px oklch(var(--p) / 0.1); }
+  50%      { box-shadow: 0 0 0 3px oklch(var(--su) / 0.3), 0 0 0 8px oklch(var(--p) / 0.25); }
+}
+
+.drawflow-node.path-failed {
+  border-color: oklch(var(--er)) !important;
+  box-shadow: 0 0 0 3px oklch(var(--er) / 0.2);
+}
+.drawflow-node.path-failed.selected {
+  border-color: oklch(var(--p)) !important;
+  animation: selectedPulseRed 1s ease-in-out infinite;
+}
+@keyframes selectedPulseRed {
+  0%, 100% { box-shadow: 0 0 0 3px oklch(var(--er) / 0.2), 0 0 0 6px oklch(var(--p) / 0.1); }
+  50%      { box-shadow: 0 0 0 3px oklch(var(--er) / 0.3), 0 0 0 8px oklch(var(--p) / 0.25); }
+}
+
+.drawflow-node.path-dimmed {
+  opacity: 0.45;
+}
+
+/* Waiting selection node */
+.drawflow-node.waiting-selection {
+  border-color: oklch(var(--wa)) !important;
+  box-shadow: 0 0 0 3px oklch(var(--wa) / 0.15) !important;
+}
+
+/* ── Node run indicator ────────────────────────────────────── */
+
+.node-run-indicator {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  z-index: 5;
+  transition: background 0.3s;
+}
+.node-run-indicator.success {
+  background: oklch(var(--su));
+  box-shadow: 0 0 0 2px oklch(var(--su) / 0.25);
+}
+.node-run-indicator.error {
+  background: oklch(var(--er));
+  box-shadow: 0 0 0 2px oklch(var(--er) / 0.25);
+}
+.node-run-indicator.running {
+  width: 10px;   /* adjust as needed */
+  height: 10px;
+  border: 2px solid oklch(var(--in) / 0.25);
+  border-top-color: oklch(var(--in));
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  background: transparent;
+}
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+/* ── Canvas grid background ────────────────────────────────── */
+
+#drawflow {
+  position: relative;
+  z-index: 0;
+  background-color: oklch(var(--b2));
+  background-image:
+    linear-gradient(oklch(var(--b3)) 1px, transparent 1px),
+    linear-gradient(90deg, oklch(var(--b3)) 1px, transparent 1px);
+  background-size: 32px 32px;
+  overflow: hidden;
+}
+#toast-area {
+  pointer-events: none;
+}
+
+#toast-area > * {
+  pointer-events: auto;
+}
+/* ── Variable autocomplete dropdown ────────────────────────── */
+
+.var-suggest-dropdown {
+  position: fixed;
+  z-index: 99999;
+  min-width: 260px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+.var-suggest-item:hover,
+.var-suggest-item.active {
+  background: oklch(var(--b3));
+}
+.var-suggest-path {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: oklch(var(--p));
+  font-family: monospace;
+  flex: 1;
+}
+.var-suggest-value {
+  font-size: 10px;
+  color: oklch(var(--bc) / 0.5);
+  font-family: monospace;
+  max-width: 80px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── JSON Tree (Events panel) ──────────────────────────────── */
+
+.json-tree {
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.7;
+}
+.jt-row {
+  display: flex;
+  align-items: flex-start;
+}
+.jt-toggle {
+  width: 16px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  flex-shrink: 0;
+  font-size: 9px;
+  user-select: none;
+  opacity: 0.5;
+}
+.jt-toggle:hover {
+  opacity: 0.8;
+}
+.ace_editor, .ace_editor * {
+  font-family: 'Menlo', 'Monaco', 'Courier New', monospace !important;
+  line-height: 1.5 !important;
+}
+.ace_editor .ace_text-layer,
+.ace_editor .ace_cursor-layer,
+.ace_editor .ace_content {
+  letter-spacing: 0 !important;
+  font-variant-ligatures: none !important;
+}
+.ace_editor span {
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  line-height: inherit !important;
+}
+
+.ace_cursor {
+  border-left-width: 2px !important;
+}
+.jt-spacer {
+  width: 16px;
+  flex-shrink: 0;
+  display: inline-block;
+}
+.jt-str   { color: oklch(var(--su)); }
+.jt-num   { color: oklch(var(--er) / 0.8); }
+.jt-bool  { color: oklch(var(--p) / 0.8); }
+.jt-null  { opacity: 0.5; font-style: italic; }
+.jt-brace { opacity: 0.5; }
+.jt-children {
+  margin-left: 16px;
+  border-left: 1px solid oklch(var(--b3));
+}
+.jt-collapsed > .jt-children {
+  display: none;
+}
+.jt-inline-preview {
+  opacity: 0.4;
+  font-size: 10px;
+  margin-left: 4px;
+}
+.jt-copy-btn {
+  display: none;
+  margin-left: 8px;
+  padding: 1px 6px;
+  font-size: 9.5px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: monospace;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.jt-highlight {
+  background: oklch(var(--wa) / 0.3);
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+/* ── Node card inside drawflow ─────────────────────────────── */
+
+.node-card {
+  border-radius: 10px;
+  overflow: visible;
+  position: relative;
+
+}
+.node-card-body {
+  padding: 20px 12px 20px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+/* ── Node run count indicator ──────────────────────────────── */
+
+.node-run-count {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  z-index: 15;
+  cursor: pointer;
+}
+.node-run-count .badge {
+  min-width: 20px;
+  height: 20px;
+  font-size: 10px;
+  padding: 0 5px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.node-run-count:hover .badge {
+  transform: scale(1.2);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+
+.node-tb-btn:hover {
+  transform: scale(1.5);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+}
+.node-run-count.is-running {
+  opacity: 1 !important;
+  display: flex !important;
+}
+.node-schedule-indicator {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  background: oklch(var(--wa) / 0.15);
+  border: 1px solid oklch(var(--wa) / 0.3);
+  color: oklch(var(--wa));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  pointer-events: auto;
+  cursor: default;
+}
+.node-run-count.has-error .badge {
+  --tw-bg-opacity: 1;
+  background-color: oklch(0.7 0.17 23.1);
+  border-color: oklch(0.7 0.17 23.1);
+  color: oklch(0.96 0 0);
+}
+.drawflow-delete {
+  line-height:25px !important
+}
+.node-card-icon {
+  font-size: 20px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 1px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: oklch(var(--b2));
+  padding:16px;
+  border-radius: 10px
+
+}
+.node-card-icon svg {
+  width: 20px;
+  height: 20px;
+}
+.node-card-text {
+  flex: 1;
+  min-width: 0;
+}
+.node-card-title {
+  font-size: 12px;
+  font-weight: 500;
+  font-family: 'Inter', sans-serif;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.drawflow-node.selected .node-card {
+  outline: 2px solid oklch(var(--p) / 0.5);
+  outline-offset: 2px;
+}
+.node-card-sub {
+  font-size: 10px;
+  opacity: 0.6;
+  margin-top: 2px;
+  font-family: 'Inter', sans-serif;
+}
+.node-card-logo {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+/* ── Node hover toolbar ─────────────────────────────────────── */
+
+.node-toolbar {
+  position: absolute;
+  bottom: -35px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 4px;
+  background: oklch(var(--b1));
+  border: 1px solid oklch(var(--b3));
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1), 0 1px 3px rgba(0,0,0,0.06);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s, transform 0.15s;
+  transform: translateX(-50%) translateY(4px);
+  z-index: 20;
+  white-space: nowrap;
+}
+
+.drawflow-node:hover .node-toolbar {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(-50%) translateY(0);
+}
+
+.node-tb-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: oklch(var(--bc) / 0.5);
+  transition: background 0.12s, color 0.12s;
+  padding: 0;
+  position: relative;
+}
+.node-tb-btn:hover {
+  background: oklch(var(--b2));
+  color: oklch(var(--bc) / 0.8);
+}
+.node-tb-btn.node-tb-btn-danger:hover {
+  background: oklch(var(--er) / 0.1);
+  color: oklch(var(--er));
+}
+.node-tb-btn svg {
+  width: 13px;
+  height: 13px;
+  pointer-events: none;
+}
+
+/* Tooltip */
+.node-tb-btn::after {
+  content: attr(title);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 3px 8px;
+  background: oklch(var(--n));
+  color: oklch(var(--nc));
+  font-size: 10px;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+  border-radius: 5px;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s;
+  z-index: 30;
+}
+.node-tb-btn:hover::after {
+  opacity: 1;
+}
+
+
+/* ── Badges inside nodes ───────────────────────────────────── */
+
+.node-card-failure-badge,
+.node-card-waiting-badge {
+  display: none;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 600;
+  font-family: 'Inter', sans-serif;
+}
+.node-card-failure-badge.visible,
+.node-card-waiting-badge.visible {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.node-card.waiting .node-card-title {
+  opacity: 0.5;
+  font-style: italic;
+}
+.node-card.waiting .node-card-sub {
+  color: oklch(var(--wa));
+  font-weight: 600;
+  font-style: normal;
+}
+
+/* ── Events iteration rows ─────────────────────────────────── */
+
+.events-iteration-row {
+  padding-left: 20px;
+  border-left: 2px solid oklch(var(--nc) / 0.15);
+  margin-left: 10px;
+}
+
+/* ── Events panel (neutral theme) ──────────────────────────── */
+
+#run-panel .json-tree {
+  color: oklch(var(--nc));
+}
+#run-panel .jt-str   { color: oklch(var(--su)); }
+#run-panel .jt-num   { color: #fda4af; }
+#run-panel .jt-bool  { color: #c4b5fd; }
+#run-panel .jt-null  { color: oklch(var(--nc) / 0.4); }
+#run-panel .jt-brace { color: oklch(var(--nc) / 0.4); }
+#run-panel .jt-children {
+  border-left-color: oklch(var(--nc) / 0.1);
+}
+
+#run-panel .jt-inline-preview {
+  color: oklch(var(--nc) / 0.3);
+}
+#run-panel .jt-copy-btn {
+  color: oklch(var(--nc) / 0.6);
+  border: 1px solid oklch(var(--nc) / 0.15);
+  background: oklch(var(--n));
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 9.5px;
+}
+#run-panel .jt-copy-btn:hover {
+  color: oklch(var(--nc) / 0.9);
+  background: oklch(var(--nc) / 0.1);
+}
+
+/* ── Run panel transition ──────────────────────────────────── */
+
+#run-panel {
+  transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── Scrollbar styling ─────────────────────────────────────── */
+
+.dark-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+.dark-scroll::-webkit-scrollbar-thumb {
+  background: oklch(var(--nc) / 0.15);
+  border-radius: 2px;
+}
+.dark-scroll::-webkit-scrollbar-thumb:hover {
+  background: oklch(var(--nc) / 0.25);
+}

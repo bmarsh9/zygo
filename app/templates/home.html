@@ -1,0 +1,465 @@
+{% extends "layouts/base.html" %}
+
+{% block page_header %}{% endblock %}
+{% block page_content %}
+<div x-data="homePage()" class="max-w-5xl mx-auto">
+
+    <!-- Welcome Modal (first login) -->
+    <div x-show="showWelcome" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="modal modal-open" x-cloak>
+        <div class="modal-box max-w-lg" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0 scale-95" x-transition:enter-end="opacity-100 scale-100">
+            <h3 class="text-xl font-bold">Welcome to {{config.APP_NAME}}!</h3>
+            <p class="text-sm mt-3 opacity-70">Your account and workspace are all set. Here are a few things to help you get started:</p>
+            <ul class="mt-4 space-y-3">
+                <li class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-primary">
+                            <circle cx="5" cy="12" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="19" cy="19" r="2"/>
+                            <path d="M7 12h10M17 5.5L7 11M17 18.5L7 13"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="text-sm font-semibold">Create Flows</div>
+                        <div class="text-xs opacity-50">Build automated workflows to streamline your processes.</div>
+                    </div>
+                </li>
+                <li class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-warning/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-warning">
+                            <path d="M15 5H9a2 2 0 00-2 2v12a2 2 0 002 2h6a2 2 0 002-2V7a2 2 0 00-2-2z"/>
+                            <path d="M12 3v4"/><path d="M9 12h6"/><path d="M9 16h4"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="text-sm font-semibold">Track Tickets</div>
+                        <div class="text-xs opacity-50">Manage issues and requests in one place.</div>
+                    </div>
+                </li>
+                <li class="flex items-start gap-3">
+                    <div class="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center flex-shrink-0 mt-0.5">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-success">
+                            <rect x="3" y="13" width="4" height="8" rx="1"/><rect x="10" y="9" width="4" height="12" rx="1"/><rect x="17" y="4" width="4" height="17" rx="1"/>
+                        </svg>
+                    </div>
+                    <div>
+                        <div class="text-sm font-semibold">Build Dashboards</div>
+                        <div class="text-xs opacity-50">Visualize your data with custom dashboards.</div>
+                    </div>
+                </li>
+            </ul>
+            <div class="mt-4 pt-3 border-t border-base-200">
+                <p class="text-xs">Have questions, issues, or feature requests?
+                    <button class="text-warning font-semibold hover:underline" @click="showWelcome = false; showHelpModal = true">Let us know</button>
+                </p>
+            </div>
+            <div class="modal-action flex items-center justify-between">
+                <label class="flex items-center gap-2 cursor-pointer">
+                    <input type="checkbox" x-model="dontShowAgain" class="checkbox checkbox-sm checkbox-primary" />
+                    <span class="text-xs opacity-60">Don't show again</span>
+                </label>
+                <button @click="dismissWelcome" class="btn btn-primary btn-sm">Get Started</button>
+            </div>
+        </div>
+        <div class="modal-backdrop" @click="dismissWelcome"></div>
+    </div>
+
+    <!-- Greeting -->
+    <div class="mb-6">
+        <div class="text-2xl font-bold" x-text="greeting"></div>
+        <div class="text-xs opacity-40 mt-0.5" x-text="todayStr"></div>
+    </div>
+
+    <!-- VIEWER+ VIEW -->
+    <template x-if="$store.app.hasMinRole('viewer')">
+        <div>
+            <!-- Quick nav cards -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
+
+                <a href="/flows" class="card bg-base-100 border border-base-300 hover:shadow-md hover:-translate-y-0.5 transition-all no-underline text-base-content group">
+                    <div class="card-body p-4 gap-2 items-center text-center">
+                        <div class="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" class="text-primary">
+                                <circle cx="5" cy="12" r="2.5"/><circle cx="19" cy="5" r="2.5"/><circle cx="19" cy="19" r="2.5"/>
+                                <path d="M7.5 12h9M17 5.5L7.5 11M17 18.5L7.5 13"/>
+                            </svg>
+                        </div>
+                        <div class="text-xs font-semibold">Flows</div>
+                        <div class="text-[10px] opacity-40" x-text="stats.flows !== null ? stats.flows + ' total' : '…'"></div>
+                    </div>
+                </a>
+
+                <a href="/tickets" class="card bg-base-100 border border-base-300 hover:shadow-md hover:-translate-y-0.5 transition-all no-underline text-base-content group">
+                    <div class="card-body p-4 gap-2 items-center text-center">
+                        <div class="w-10 h-10 rounded-xl bg-warning/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" class="text-warning">
+                                <path d="M15 5H9a2 2 0 00-2 2v12a2 2 0 002 2h6a2 2 0 002-2V7a2 2 0 00-2-2z"/>
+                                <path d="M12 3v4"/><path d="M9 12h6"/><path d="M9 16h4"/>
+                            </svg>
+                        </div>
+                        <div class="text-xs font-semibold">Tickets</div>
+                        <div class="text-[10px] opacity-40" x-text="stats.tickets !== null ? stats.tickets + ' total' : '…'"></div>
+                    </div>
+                </a>
+
+                <a href="/dashboards" class="card bg-base-100 border border-base-300 hover:shadow-md hover:-translate-y-0.5 transition-all no-underline text-base-content group">
+                    <div class="card-body p-4 gap-2 items-center text-center">
+                        <div class="w-10 h-10 rounded-xl bg-success/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" class="text-success">
+                                <rect x="3" y="13" width="4" height="8" rx="1"/><rect x="10" y="9" width="4" height="12" rx="1"/><rect x="17" y="4" width="4" height="17" rx="1"/>
+                            </svg>
+                        </div>
+                        <div class="text-xs font-semibold">Dashboards</div>
+                        <div class="text-[10px] opacity-40" x-text="stats.dashboards !== null ? stats.dashboards + ' total' : '…'"></div>
+                    </div>
+                </a>
+
+                <a href="/tables" class="card bg-base-100 border border-base-300 hover:shadow-md hover:-translate-y-0.5 transition-all no-underline text-base-content group">
+                    <div class="card-body p-4 gap-2 items-center text-center">
+                        <div class="w-10 h-10 rounded-xl bg-secondary/10 flex items-center justify-center group-hover:scale-110 transition-transform">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" class="text-secondary">
+                                <rect x="3" y="3" width="18" height="18" rx="3"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/>
+                            </svg>
+                        </div>
+                        <div class="text-xs font-semibold">Tables</div>
+                        <div class="text-[10px] opacity-40" x-text="stats.tables !== null ? stats.tables + ' total' : '…'"></div>
+                    </div>
+                </a>
+
+            </div>
+
+            <!-- Two-column: Recent items + Quick actions -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+
+                <!-- Recent flows + tickets -->
+                <div class="lg:col-span-2">
+
+                    <div class="flex items-center justify-between mb-3">
+                        <div class="text-xs font-bold opacity-50 uppercase tracking-wider">Recent Flows</div>
+                        <a href="/flows" class="text-[10px] text-primary no-underline hover:underline">View all →</a>
+                    </div>
+                    <div class="card bg-base-100 border border-base-300">
+                        <div class="card-body p-0">
+                            <div x-show="recentFlows === null" class="flex items-center justify-center py-8">
+                                <span class="loading loading-spinner loading-sm text-primary"></span>
+                            </div>
+                            <div x-show="recentFlows !== null && recentFlows.length === 0" class="text-center py-8 opacity-30 text-xs">
+                                No flows yet — create your first one
+                            </div>
+                            <template x-for="(flow, i) in (recentFlows || []).slice(0, 5)" :key="flow.id">
+                                <a :href="'/flows/' + flow.id"
+                                   class="flex items-center gap-3 px-4 py-3 no-underline text-base-content hover:bg-base-200/50 transition-colors"
+                                   :class="i > 0 ? 'border-t border-base-300' : ''">
+                                    <div class="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-primary">
+                                            <circle cx="5" cy="12" r="2"/><circle cx="19" cy="5" r="2"/><circle cx="19" cy="19" r="2"/>
+                                            <path d="M7 12h10M17 5.5L7 11M17 18.5L7 13"/>
+                                        </svg>
+                                    </div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="text-xs font-semibold truncate" x-text="flow.name || 'Untitled'"></div>
+                                        <div class="text-[10px] opacity-40" x-text="flow.node_count ? flow.node_count + ' nodes' : ''"></div>
+                                    </div>
+                                    <div class="text-[10px] opacity-30 flex-shrink-0" x-text="formatDate(flow.updated_at)"></div>
+                                </a>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div class="flex items-center justify-between mb-3 mt-6">
+                        <div class="text-xs font-bold opacity-50 uppercase tracking-wider">Recent Tickets</div>
+                        <a href="/tickets" class="text-[10px] text-primary no-underline hover:underline">View all →</a>
+                    </div>
+                    <div class="card bg-base-100 border border-base-300">
+                        <div class="card-body p-0">
+                            <div x-show="recentTickets === null" class="flex items-center justify-center py-8">
+                                <span class="loading loading-spinner loading-sm text-primary"></span>
+                            </div>
+                            <div x-show="recentTickets !== null && recentTickets.length === 0" class="text-center py-8 opacity-30 text-xs">
+                                No tickets yet
+                            </div>
+                            <template x-for="(t, i) in (recentTickets || []).slice(0, 5)" :key="t.id">
+                                <a :href="'/tickets/' + t.id"
+                                   class="flex items-center gap-3 px-4 py-3 no-underline text-base-content hover:bg-base-200/50 transition-colors"
+                                   :class="i > 0 ? 'border-t border-base-300' : ''">
+                                    <div class="w-2 h-2 rounded-full flex-shrink-0"
+                                         :class="t.status === 'open' ? 'bg-info' : t.status === 'in_progress' ? 'bg-warning' : t.status === 'resolved' ? 'bg-success' : 'bg-base-300'"></div>
+                                    <div class="flex-1 min-w-0">
+                                        <div class="text-xs font-semibold truncate" x-text="t.title || 'Untitled'"></div>
+                                        <div class="text-[10px] opacity-40 flex items-center gap-2">
+                                            <span class="capitalize" x-text="t.status"></span>
+                                            <span x-show="t.priority" class="capitalize"
+                                                  :class="t.priority === 'critical' ? 'text-error' : t.priority === 'high' ? 'text-warning' : ''"
+                                                  x-text="t.priority"></span>
+                                        </div>
+                                    </div>
+                                    <div class="text-[10px] opacity-30 flex-shrink-0" x-text="formatDate(t.created_at)"></div>
+                                </a>
+                            </template>
+                        </div>
+                    </div>
+
+                </div>
+
+                <!-- Sidebar: Quick actions + Ticket summary + Dashboards -->
+                <div>
+                    <div class="text-xs font-bold opacity-50 uppercase tracking-wider mb-3">Quick Actions</div>
+                    <div class="space-y-2 mb-6">
+                        <a href="/?new=1" class="btn btn-sm btn-primary animate-pulse w-full justify-start gap-2 no-underline">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                            New Flow
+                        </a>
+                        <a href="/tickets?new=1" class="btn btn-sm w-full justify-start gap-2 no-underline">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                            New Ticket
+                        </a>
+                        <a href="/dashboards" class="btn btn-sm w-full justify-start gap-2 no-underline">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                            New Dashboard
+                        </a>
+                    </div>
+
+                    <div class="text-xs font-bold opacity-50 uppercase tracking-wider mb-3">Ticket Summary</div>
+                    <div class="card bg-base-100 border border-base-300">
+                        <div class="card-body p-4 gap-3">
+                            <div x-show="ticketSummary === null" class="flex items-center justify-center py-4">
+                                <span class="loading loading-spinner loading-sm text-primary"></span>
+                            </div>
+                            <template x-if="ticketSummary !== null">
+                                <div class="space-y-2.5">
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-info"></div><span class="text-xs">Open</span></div>
+                                        <span class="text-xs font-bold" x-text="ticketSummary.open"></span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-warning"></div><span class="text-xs">In Progress</span></div>
+                                        <span class="text-xs font-bold" x-text="ticketSummary.in_progress"></span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-success"></div><span class="text-xs">Resolved</span></div>
+                                        <span class="text-xs font-bold" x-text="ticketSummary.resolved"></span>
+                                    </div>
+                                    <div class="flex items-center justify-between">
+                                        <div class="flex items-center gap-2"><div class="w-2 h-2 rounded-full bg-base-300"></div><span class="text-xs">Closed</span></div>
+                                        <span class="text-xs font-bold" x-text="ticketSummary.closed"></span>
+                                    </div>
+                                    <div class="border-t border-base-300 pt-2 mt-1 flex items-center justify-between">
+                                        <span class="text-[10px] opacity-40">Total</span>
+                                        <span class="text-xs font-bold" x-text="ticketSummary.open + ticketSummary.in_progress + ticketSummary.resolved + ticketSummary.closed"></span>
+                                    </div>
+                                </div>
+                            </template>
+                        </div>
+                    </div>
+
+                    <div class="text-xs font-bold opacity-50 uppercase tracking-wider mb-3 mt-6">Dashboards</div>
+                    <div class="space-y-2">
+                        <div x-show="recentDashboards === null" class="flex items-center justify-center py-4">
+                            <span class="loading loading-spinner loading-sm text-primary"></span>
+                        </div>
+                        <div x-show="recentDashboards !== null && recentDashboards.length === 0" class="text-center py-4 opacity-30 text-xs">
+                            No dashboards yet
+                        </div>
+                        <template x-for="d in (recentDashboards || []).slice(0, 4)" :key="d.id">
+                            <a :href="'/dashboards/' + d.id"
+                               class="flex items-center gap-2.5 px-3 py-2.5 rounded-lg bg-base-100 border border-base-300 no-underline text-base-content hover:shadow-sm hover:-translate-y-px transition-all">
+                                <div class="w-6 h-6 rounded-md bg-success/10 flex items-center justify-center flex-shrink-0">
+                                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-success">
+                                        <rect x="3" y="13" width="4" height="8" rx="1"/><rect x="10" y="9" width="4" height="12" rx="1"/><rect x="17" y="4" width="4" height="17" rx="1"/>
+                                    </svg>
+                                </div>
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-[11px] font-semibold truncate" x-text="d.name || 'Untitled'"></div>
+                                    <div class="text-[10px] opacity-40" x-text="(d.widgets || []).length + ' widgets'"></div>
+                                </div>
+                            </a>
+                        </template>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </template>
+
+    <!-- USER ROLE VIEW -->
+    <template x-if="!$store.app.hasMinRole('viewer')">
+        <div>
+            <!-- Search bar -->
+            <div class="mb-6">
+                <div class="relative">
+                    <svg class="absolute left-3 top-1/2 -translate-y-1/2 opacity-30" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                    <input
+                        type="text"
+                        class="input input-bordered w-full pl-9 text-sm"
+                        placeholder="Search forms…"
+                        x-model="formSearch"
+                    />
+                </div>
+            </div>
+
+            <!-- Forms grid -->
+            <div x-show="forms === null" class="flex items-center justify-center py-16">
+                <span class="loading loading-spinner loading-sm text-primary"></span>
+            </div>
+            <div x-show="forms !== null && filteredForms.length === 0" class="text-center py-16 opacity-30 text-sm">
+                No forms found
+            </div>
+            <div class="grid grid-cols-3 gap-4">
+                <template x-for="form in filteredForms" :key="form.id">
+                    <a :href="form.form_url" target="_blank"
+                       class="card bg-base-100 border border-base-300 hover:shadow-md hover:-translate-y-0.5 transition-all no-underline text-base-content group">
+                        <div class="card-body p-4 gap-2">
+                            <div class="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center group-hover:scale-110 transition-transform mb-1">
+                                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" class="text-primary">
+                                    <rect x="3" y="3" width="18" height="18" rx="3"/>
+                                    <path d="M8 9h8M8 13h5"/>
+                                </svg>
+                            </div>
+                            <div class="text-sm font-semibold truncate" x-text="form.name || 'Untitled Form'"></div>
+                            <div class="text-[10px] opacity-40 truncate" x-text="form.description || 'Empty description'"></div>
+                        </div>
+                    </a>
+                </template>
+            </div>
+        </div>
+    </template>
+
+</div>
+
+<script>
+function homePage() {
+    return {
+        // welcome modal state
+        showWelcome: false,
+        dontShowAgain: false,
+
+        // viewer+ state
+        stats: { flows: null, tickets: null, dashboards: null, tables: null },
+        recentFlows: null,
+        recentTickets: null,
+        recentDashboards: null,
+        ticketSummary: null,
+
+        // user role state
+        forms: null,
+        formSearch: '',
+
+        get filteredForms() {
+            if (!this.forms) return []
+            const q = this.formSearch.toLowerCase().trim()
+            if (!q) return this.forms
+            return this.forms.filter(f => (f.name || '').toLowerCase().includes(q))
+        },
+
+        get greeting() {
+            const h = new Date().getHours()
+            if (h < 12) return 'Good morning'
+            if (h < 17) return 'Good afternoon'
+            return 'Good evening'
+        },
+
+        get todayStr() {
+            return new Date().toLocaleDateString('en-US', {
+                weekday: 'long', month: 'long', day: 'numeric', year: 'numeric',
+            })
+        },
+
+        init() {
+            if (this.$store.app.hasMinRole('viewer')) {
+                this.showWelcome = !{{ current_user.has_seen_welcome | tojson }}
+                this.loadAll()
+            } else {
+                this.loadForms()
+            }
+        },
+
+        dismissWelcome() {
+            this.showWelcome = false
+            if (this.dontShowAgain) {
+                request("PUT",
+                    `/api/users/${Alpine.store('app').user.id}/welcome-dismissed`,
+                    () => {},
+                    (err) => console.error(err)
+                )
+            }
+        },
+
+        async loadForms() {
+            const tenantId = Alpine.store('app').tenantId
+            try {
+                const res = await fetch(`/api/tenants/${tenantId}/web-forms`)
+                const data = await res.json()
+                this.forms = Array.isArray(data) ? data : []
+            } catch {
+                this.forms = []
+            }
+        },
+
+        async loadAll() {
+            const tenantId = Alpine.store('app').tenantId
+
+            const [flows, tickets, dashboards, tables] = await Promise.allSettled([
+                fetch(`/api/tenants/${tenantId}/flows?limit=5`).then(r => r.json()),
+                fetch(`/api/tenants/${tenantId}/tickets?limit=5`).then(r => r.json()),
+                fetch(`/api/tenants/${tenantId}/dashboards?limit=5`).then(r => r.json()),
+                fetch(`/api/tenants/${tenantId}/tables`).then(r => r.json()),
+            ])
+
+            if (flows.status === 'fulfilled') {
+                const list = Array.isArray(flows.value) ? flows.value : []
+                this.stats.flows = list.length
+                this.recentFlows = list.slice(0, 5)
+            } else {
+                this.recentFlows = []
+                this.stats.flows = 0
+            }
+
+            if (tickets.status === 'fulfilled') {
+                const raw  = tickets.value
+                const list = Array.isArray(raw) ? raw : (raw.tickets || [])
+                this.stats.tickets = list.length
+                this.recentTickets = list.slice(0, 5)
+                const summary = { open: 0, in_progress: 0, resolved: 0, closed: 0 }
+                list.forEach(t => {
+                    const s = t.status || 'open'
+                    if (summary[s] !== undefined) summary[s]++
+                    else summary.open++
+                })
+                this.ticketSummary = summary
+            } else {
+                this.recentTickets = []
+                this.stats.tickets = 0
+                this.ticketSummary = { open: 0, in_progress: 0, resolved: 0, closed: 0 }
+            }
+
+            if (dashboards.status === 'fulfilled') {
+                const list = Array.isArray(dashboards.value) ? dashboards.value : []
+                this.stats.dashboards = list.length
+                this.recentDashboards = list.slice(0, 4)
+            } else {
+                this.recentDashboards = []
+                this.stats.dashboards = 0
+            }
+
+            if (tables.status === 'fulfilled') {
+                const list = Array.isArray(tables.value) ? tables.value : []
+                this.stats.tables = list.length
+            } else {
+                this.stats.tables = 0
+            }
+        },
+
+        formatDate(iso) {
+            if (!iso) return ''
+            const d    = new Date(iso.endsWith('Z') ? iso : iso + 'Z')
+            const diff = Math.floor((Date.now() - d.getTime()) / 1000)
+            if (diff < 60)     return 'just now'
+            if (diff < 3600)   return Math.floor(diff / 60)    + 'm ago'
+            if (diff < 86400)  return Math.floor(diff / 3600)  + 'h ago'
+            if (diff < 604800) return Math.floor(diff / 86400) + 'd ago'
+            return d.toLocaleDateString()
+        },
+    }
+}
+</script>
+{% endblock %}

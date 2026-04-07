@@ -1,0 +1,301 @@
+{% extends "layouts/base.html" %}
+
+{% block page_title %}Tickets{% endblock %}
+{% block page_content %}
+<div role="alert" class="alert mb-4">
+  <svg
+    xmlns="http://www.w3.org/2000/svg"
+    fill="none"
+    viewBox="0 0 24 24"
+    class="stroke-warning h-6 w-6 shrink-0">
+    <path
+      stroke-linecap="round"
+      stroke-linejoin="round"
+      stroke-width="2"
+      d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+  </svg>
+  <span> Track tasks, bugs, and requests created by your flows or team. Manage status, priority, assignments, and comments in one place.</span>
+</div>
+<div x-data="ticketsList()">
+
+    <!-- Search + controls -->
+    <div class="flex items-center justify-between gap-3 mb-3">
+        <label class="input input-sm input-bordered flex items-center gap-2 w-72">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-3.5 w-3.5 opacity-50" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35M17 11A6 6 0 1 1 5 11a6 6 0 0 1 12 0z"/>
+            </svg>
+            <input type="text" x-model="search" @input="page = 1" placeholder="Search tickets…" class="grow" />
+        </label>
+        <div class="flex items-center gap-2">
+            <span class="text-xs opacity-40" x-text="filteredItems.length + ' tickets'"></span>
+            <button @click="loadTickets()" class="btn btn-sm btn-ghost border border-base-300 tooltip" data-tip="Refresh">
+                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke-width="1.8" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0 3.181 3.183a8.25 8.25 0 0 0 13.803-3.7M4.031 9.865a8.25 8.25 0 0 1 13.803-3.7l3.181 3.182m0-4.991v4.99"/>
+                </svg>
+            </button>
+            <button x-show="$store.app.isEditor || $store.app.user.super"
+                    @click="createTicket()"
+                    class="btn btn-sm btn-primary">
+                New Ticket
+            </button>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="flex items-center gap-2 mb-3 flex-wrap">
+        <select x-model="filterStatus" @change="page = 1" class="select select-xs select-bordered">
+            <option value="">All statuses</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In Progress</option>
+            <option value="resolved">Resolved</option>
+            <option value="closed">Closed</option>
+        </select>
+        <select x-model="filterPriority" @change="page = 1" class="select select-xs select-bordered">
+            <option value="">All priorities</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+            <option value="critical">Critical</option>
+        </select>
+        <button
+            x-show="filterStatus || filterPriority || search"
+            @click="filterStatus = ''; filterPriority = ''; search = ''; page = 1"
+            class="btn btn-xs btn-ghost opacity-50 hover:opacity-100">
+            Clear filters
+        </button>
+    </div>
+
+    <!-- Table -->
+    <div class="card bg-base-100 border border-base-300 overflow-hidden">
+
+        <!-- Loading -->
+        <div x-show="loading" class="flex items-center justify-center py-16">
+            <span class="loading loading-dots loading-md text-primary"></span>
+        </div>
+
+        <!-- Empty -->
+        <div x-show="!loading && filteredItems.length === 0 && !search && !filterStatus && !filterPriority"
+             class="text-center py-16 opacity-30 text-sm">
+            No tickets yet
+        </div>
+
+        <!-- No results -->
+        <div x-show="!loading && filteredItems.length === 0 && (search || filterStatus || filterPriority)"
+             class="text-center py-16 opacity-30 text-sm">
+            No tickets match your filters
+        </div>
+
+        <div x-show="!loading && filteredItems.length > 0">
+            <table class="table table-sm w-full">
+                <thead class="bg-base-200 text-xs uppercase tracking-wide">
+                    <tr>
+                        <th @click="setSort('title')" class="cursor-pointer select-none">
+                            <div class="flex items-center gap-1">
+                                Title
+                                <span x-show="sortField === 'title'" x-text="sortAsc ? '↑' : '↓'" class="opacity-50"></span>
+                            </div>
+                        </th>
+                        <th @click="setSort('status')" class="cursor-pointer select-none hidden sm:table-cell w-28">
+                            <div class="flex items-center gap-1">
+                                Status
+                                <span x-show="sortField === 'status'" x-text="sortAsc ? '↑' : '↓'" class="opacity-50"></span>
+                            </div>
+                        </th>
+                        <th @click="setSort('priority')" class="cursor-pointer select-none hidden sm:table-cell w-28">
+                            <div class="flex items-center gap-1">
+                                Priority
+                                <span x-show="sortField === 'priority'" x-text="sortAsc ? '↑' : '↓'" class="opacity-50"></span>
+                            </div>
+                        </th>
+                        <th class="hidden md:table-cell">Assignee</th>
+                        <th @click="setSort('created_at')" class="cursor-pointer select-none hidden lg:table-cell w-32">
+                            <div class="flex items-center gap-1">
+                                Created
+                                <span x-show="sortField === 'created_at'" x-text="sortAsc ? '↑' : '↓'" class="opacity-50"></span>
+                            </div>
+                        </th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <template x-for="ticket in pagedItems" :key="ticket.id">
+                        <tr class="hover:bg-base-200/50 cursor-pointer transition-colors"
+                            @click="window.location.href = '/tickets/' + ticket.id">
+                            <td>
+                                <div class="flex items-center gap-2">
+                                    <!-- Priority bar -->
+                                    <div class="w-0.5 self-stretch rounded-full flex-shrink-0"
+                                         :class="{
+                                            'bg-base-content/20':  ticket.priority === 'low',
+                                            'bg-warning/60':       ticket.priority === 'medium',
+                                            'bg-error/70':         ticket.priority === 'high',
+                                            'bg-error':            ticket.priority === 'critical',
+                                         }">
+                                    </div>
+                                    <div class="min-w-0">
+                                        <div class="text-xs font-medium truncate" x-text="ticket.title || 'Untitled'"></div>
+                                        <div class="flex items-center gap-2 mt-0.5">
+                                            <span class="text-[10px] font-mono opacity-30" x-text="'#' + ticket.id"></span>
+                                            <template x-for="tag in (ticket.tags || []).slice(0, 3)" :key="tag">
+                                                <span class="text-[9px] px-1.5 py-0.5 bg-base-200 rounded opacity-60" x-text="tag"></span>
+                                            </template>
+                                        </div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="hidden sm:table-cell">
+                                <span class="text-xs font-medium px-2 py-0.5 rounded-full capitalize"
+                                      :class="{
+                                        'bg-info/10 text-info':       ticket.status === 'open',
+                                        'bg-warning/10 text-warning': ticket.status === 'in_progress',
+                                        'bg-success/10 text-success': ticket.status === 'resolved',
+                                        'bg-base-200 opacity-50':     ticket.status === 'closed',
+                                      }"
+                                      x-text="(ticket.status || 'open').replace('_', ' ')">
+                                </span>
+                            </td>
+                            <td class="hidden sm:table-cell">
+                                <span class="text-xs font-medium px-2 py-0.5 rounded-full capitalize"
+                                      :class="{
+                                        'bg-base-200 opacity-50':     ticket.priority === 'low',
+                                        'bg-warning/10 text-warning': ticket.priority === 'medium',
+                                        'bg-error/10 text-error':     ticket.priority === 'high' || ticket.priority === 'critical',
+                                      }"
+                                      x-text="ticket.priority || 'medium'">
+                                </span>
+                            </td>
+                            <td class="hidden md:table-cell">
+                                <span class="text-xs opacity-50" x-text="ticket.assignee || '—'"></span>
+                            </td>
+                            <td class="hidden lg:table-cell">
+                                <span class="text-xs opacity-50" x-text="formatDate(ticket.created_at)"></span>
+                            </td>
+                        </tr>
+                    </template>
+                </tbody>
+            </table>
+
+            <!-- Pagination -->
+            <div class="flex items-center justify-between px-4 py-3 border-t border-base-200">
+                <span class="text-xs opacity-40"
+                    x-text="`Showing ${(page - 1) * pageSize + 1}–${Math.min(page * pageSize, filteredItems.length)} of ${filteredItems.length}`">
+                </span>
+                <div class="flex items-center gap-2">
+                    <div class="flex items-center gap-1">
+                        <button @click="page--" :disabled="page === 1" class="btn btn-xs btn-ghost">‹</button>
+                        <template x-for="p in totalPages" :key="p">
+                            <button
+                                @click="page = p"
+                                class="btn btn-xs"
+                                :class="page === p ? 'btn-primary' : 'btn-ghost'"
+                                x-text="p">
+                            </button>
+                        </template>
+                        <button @click="page++" :disabled="page === totalPages" class="btn btn-xs btn-ghost">›</button>
+                    </div>
+                    <select x-model.number="pageSize" @change="page = 1" class="select select-xs select-bordered w-20">
+                        <option value="10">10</option>
+                        <option value="25">25</option>
+                        <option value="50">50</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('ticketsList', () => ({
+            tickets:        [],
+            loading:        true,
+            search:         '',
+            filterStatus:   '',
+            filterPriority: '',
+            sortField:      'created_at',
+            sortAsc:        false,
+            page:           1,
+            pageSize:       25,
+
+            get filteredItems() {
+                const q = this.search.toLowerCase().trim();
+                let rows = this.tickets.filter(t => {
+                    if (this.filterStatus   && t.status   !== this.filterStatus)   return false;
+                    if (this.filterPriority && t.priority !== this.filterPriority) return false;
+                    if (q) {
+                        const hay = [t.title, t.assignee, ...(t.tags || [])].join(' ').toLowerCase();
+                        if (!hay.includes(q)) return false;
+                    }
+                    return true;
+                });
+
+                rows.sort((a, b) => {
+                    const av = (a[this.sortField] ?? '').toString().toLowerCase();
+                    const bv = (b[this.sortField] ?? '').toString().toLowerCase();
+                    return this.sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+                });
+
+                return rows;
+            },
+
+            get totalPages() {
+                return Math.max(1, Math.ceil(this.filteredItems.length / this.pageSize));
+            },
+
+            get pagedItems() {
+                const start = (this.page - 1) * this.pageSize;
+                return this.filteredItems.slice(start, start + this.pageSize);
+            },
+
+            init() {
+                this.$watch('search',         () => { this.page = 1; });
+                this.$watch('filterStatus',   () => { this.page = 1; });
+                this.$watch('filterPriority', () => { this.page = 1; });
+                this.$watch('pageSize',       () => { this.page = 1; });
+                this.loadTickets();
+            },
+
+            setSort(field) {
+                if (this.sortField === field) {
+                    this.sortAsc = !this.sortAsc;
+                } else {
+                    this.sortField = field;
+                    this.sortAsc   = true;
+                }
+                this.page = 1;
+            },
+
+            async loadTickets() {
+                this.loading = true;
+                try {
+                    const res    = await fetch(`/api/tenants/${this.$store.app.tenantId}/tickets`);
+                    this.tickets = await res.json();
+                } catch { this.tickets = []; }
+                this.loading = false;
+            },
+
+            async createTicket() {
+                try {
+                    const res = await fetch(`/api/tenants/${this.$store.app.tenantId}/tickets`, {
+                        method:  'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body:    JSON.stringify({ title: 'New Ticket', status: 'open', priority: 'medium' }),
+                    });
+                    const ticket = await res.json();
+                    window.location.href = `/tickets/${ticket.id}`;
+                } catch { toast('Failed to create ticket', 'error'); }
+            },
+
+            formatDate(iso) {
+                if (!iso) return '—';
+                const d    = new Date(iso.endsWith('Z') ? iso : iso + 'Z');
+                const diff = Math.floor((Date.now() - d.getTime()) / 1000);
+                if (diff < 60)     return 'just now';
+                if (diff < 3600)   return Math.floor(diff / 60)    + 'm ago';
+                if (diff < 86400)  return Math.floor(diff / 3600)  + 'h ago';
+                if (diff < 604800) return Math.floor(diff / 86400) + 'd ago';
+                return d.toLocaleDateString();
+            },
+        }));
+    });
+    </script>
+</div>
+{% endblock %}

@@ -1,0 +1,2500 @@
+openapi: 3.0.3
+info:
+  title: API
+  description: |
+    Multi-tenant workflow automation platform API.
+
+    ## Authentication
+
+    **Browser (session-based):** Cookie-based session via Flask-Login.
+
+    **API (token-based):** Pass a JWT token in the `token` HTTP header. Obtain a token
+    via `GET /api/token` while authenticated in a browser session. The token is user-scoped —
+    tenant access is determined by the `{tenant_id}` in each endpoint's URL path.
+
+    ## Authorization
+
+    Resources are scoped to tenants. Each tenant member has one or more roles:
+    - **user** — minimal access (web forms only)
+    - **viewer** — read access to all tenant resources
+    - **editor** — read + write access
+    - **admin** — full access including member management
+
+    Superadmins can access any tenant and any resource.
+
+    ## Tenant Isolation
+
+    All `/tenants/{tenant_id}/...` endpoints enforce that the authenticated user
+    is a member of the specified tenant with sufficient role. Resources are always
+    scoped to a single tenant per request.
+  version: 1.0.0
+
+servers:
+  - url: /api
+    description: API prefix
+
+# ── Security ──────────────────────────────────────────────────────────────────
+
+security:
+  - sessionAuth: []
+  - tokenAuth: []
+
+components:
+  securitySchemes:
+    sessionAuth:
+      type: apiKey
+      in: cookie
+      name: session
+      description: Flask session cookie (browser-based login)
+    tokenAuth:
+      type: apiKey
+      in: header
+      name: token
+      description: JWT token obtained from `GET /api/token`
+
+  parameters:
+    tenant_id:
+      name: tenant_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Tenant ID
+    flow_id:
+      name: flow_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Flow ID
+    ticket_id:
+      name: ticket_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Ticket ID
+    dashboard_id:
+      name: dashboard_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Dashboard ID
+    user_id:
+      name: user_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: User ID
+    limit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 50
+      description: Maximum number of results to return
+
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+
+    Ok:
+      type: object
+      properties:
+        ok:
+          type: boolean
+          example: true
+
+    MessageOk:
+      type: object
+      properties:
+        message:
+          type: string
+          example: ok
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+          format: email
+        display_name:
+          type: string
+        license:
+          type: string
+        trial_days:
+          type: integer
+        is_active:
+          type: boolean
+        super:
+          type: boolean
+        email_confirmed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    Tenant:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        contact_email:
+          type: string
+          format: email
+        magic_link_login:
+          type: boolean
+        approved_domains:
+          type: string
+        license:
+          type: string
+        flow_cap:
+          type: integer
+
+    Flow:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        name:
+          type: string
+        is_published:
+          type: boolean
+        folder:
+          type: string
+          nullable: true
+        updated_at:
+          type: string
+          format: date-time
+
+    FlowDetail:
+      allOf:
+        - $ref: '#/components/schemas/Flow'
+        - type: object
+          properties:
+            nodes:
+              type: array
+              items:
+                $ref: '#/components/schemas/Node'
+            edges:
+              type: array
+              items:
+                $ref: '#/components/schemas/Edge'
+            notes:
+              type: array
+              items:
+                type: object
+
+    Node:
+      type: object
+      properties:
+        id:
+          type: string
+        node_id:
+          type: string
+        name:
+          type: string
+        label:
+          type: string
+        node_type:
+          type: string
+        pos_x:
+          type: number
+        pos_y:
+          type: number
+        inputs:
+          type: integer
+        outputs:
+          type: integer
+        has_failure_path:
+          type: boolean
+        action_id:
+          type: string
+          nullable: true
+        action_name:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        config:
+          type: object
+
+    Edge:
+      type: object
+      properties:
+        source_node_id:
+          type: string
+        source_output:
+          type: integer
+        target_node_id:
+          type: string
+        target_input:
+          type: integer
+
+    Run:
+      type: object
+      properties:
+        id:
+          type: string
+        flow_id:
+          type: string
+        status:
+          type: string
+          enum: [queued, running, completed, failed, cancelled]
+        created_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        error:
+          type: string
+          nullable: true
+
+    Credential:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        name:
+          type: string
+        label:
+          type: string
+        integration:
+          type: string
+          nullable: true
+
+    DataTable:
+      type: object
+      properties:
+        name:
+          type: string
+        count:
+          type: integer
+
+    DataRecord:
+      type: object
+      properties:
+        id:
+          type: string
+        key:
+          type: string
+          nullable: true
+        data:
+          type: object
+
+    Ticket:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        title:
+          type: string
+        status:
+          type: string
+          enum: [open, in_progress, resolved, closed]
+        priority:
+          type: string
+          enum: [low, medium, high, critical]
+        assignee:
+          type: string
+          nullable: true
+        tags:
+          type: array
+          items:
+            type: string
+        content:
+          type: object
+        meta:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        closed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    TicketComment:
+      type: object
+      properties:
+        id:
+          type: string
+        ticket_id:
+          type: string
+        author:
+          type: string
+        body:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    Dashboard:
+      type: object
+      properties:
+        id:
+          type: string
+        tenant_id:
+          type: string
+        name:
+          type: string
+        widgets:
+          type: array
+          items:
+            type: object
+        updated_at:
+          type: string
+          format: date-time
+
+    Session:
+      type: object
+      properties:
+        tenant_id:
+          type: string
+          nullable: true
+        tenant_name:
+          type: string
+          nullable: true
+        tenant_roles:
+          type: array
+          items:
+            type: string
+        user_id:
+          type: string
+        user_email:
+          type: string
+        user_super:
+          type: boolean
+
+    FormDefinition:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        elements:
+          type: array
+          items:
+            type: object
+
+  responses:
+    Unauthorized:
+      description: Not authenticated
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Insufficient permissions
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+# ── Tags ──────────────────────────────────────────────────────────────────────
+
+tags:
+  - name: Health
+    description: Health check
+  - name: Auth & Session
+    description: Session management and token generation
+  - name: Users
+    description: User management (superadmin or self)
+  - name: Tenants
+    description: Tenant management and membership
+  - name: Flows
+    description: Flow CRUD, saving, running, and scheduling
+  - name: Runs & Jobs
+    description: Flow run history and job management
+  - name: Credentials
+    description: Encrypted credential storage
+  - name: Data Tables
+    description: Key-value data tables and schemas
+  - name: Tickets
+    description: Ticket tracking with comments
+  - name: Dashboards
+    description: Dashboard CRUD
+  - name: Forms
+    description: Form builder and public form submission
+  - name: Webhooks
+    description: Webhook endpoints
+  - name: Integrations
+    description: Available integrations and operators
+  - name: Logs
+    description: System and tenant logs
+  - name: Feedback
+    description: User feedback
+
+# ── Paths ─────────────────────────────────────────────────────────────────────
+
+paths:
+
+  # ── Health ────────────────────────────────────────────────────────────────
+
+  /health:
+    get:
+      tags: [Health]
+      summary: Health check
+      security: []
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                    example: ok
+
+  # ── Auth & Session ────────────────────────────────────────────────────────
+
+  /token:
+    get:
+      tags: [Auth & Session]
+      summary: Generate an API token
+      description: Returns a signed JWT token for API access. Requires an active browser session.
+      parameters:
+        - name: expiration
+          in: query
+          schema:
+            type: integer
+            default: 600
+          description: Token lifetime in seconds
+      responses:
+        '200':
+          description: Token generated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  expires_in:
+                    type: integer
+
+  /session:
+    get:
+      tags: [Auth & Session]
+      summary: Get current session data
+      responses:
+        '200':
+          description: Current session context
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+    delete:
+      tags: [Auth & Session]
+      summary: Clear session
+      responses:
+        '200':
+          description: Session cleared
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageOk'
+
+  /session/{tenant_id}:
+    put:
+      tags: [Auth & Session]
+      summary: Switch active tenant
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+      responses:
+        '200':
+          description: Tenant switched
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageOk'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /session/refresh:
+    post:
+      tags: [Auth & Session]
+      summary: Refresh session data
+      responses:
+        '200':
+          description: Refreshed session
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Session'
+
+  # ── Users ─────────────────────────────────────────────────────────────────
+
+  /users/exist:
+    post:
+      tags: [Users]
+      summary: Check if a user exists by email
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: User exists
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: boolean
+                    example: true
+        '404':
+          description: User not found
+
+  /users:
+    get:
+      tags: [Users]
+      summary: List all users
+      description: Superadmin only.
+      responses:
+        '200':
+          description: List of all users
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/User'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags: [Users]
+      summary: Create a user
+      description: Superadmin only. Creates a super user and sends notification.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+      responses:
+        '200':
+          description: User created
+          content:
+            application/json:
+              schema:
+                type: object
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /users/{user_id}:
+    get:
+      tags: [Users]
+      summary: Get a user
+      description: Self or superadmin only.
+      parameters:
+        - $ref: '#/components/parameters/user_id'
+      responses:
+        '200':
+          description: User details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [Users]
+      summary: Update a user
+      description: |
+        Self or superadmin. Superadmins can additionally set `is_active`, `super`,
+        `can_user_create_tenant`, and `tenant_limit`.
+      parameters:
+        - $ref: '#/components/parameters/user_id'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                display_name:
+                  type: string
+                license:
+                  type: string
+                trial_days:
+                  type: integer
+                is_active:
+                  type: boolean
+                  description: Superadmin only
+                super:
+                  type: boolean
+                  description: Superadmin only
+                can_user_create_tenant:
+                  type: boolean
+                  description: Superadmin only
+                tenant_limit:
+                  type: integer
+                  description: Superadmin only
+                email_confirmed:
+                  type: boolean
+      responses:
+        '200':
+          description: Updated user
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    $ref: '#/components/schemas/User'
+    delete:
+      tags: [Users]
+      summary: Deactivate a user
+      description: Self or superadmin. Soft-deletes by setting is_active=false.
+      parameters:
+        - $ref: '#/components/parameters/user_id'
+      responses:
+        '200':
+          description: User deactivated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageOk'
+
+  /users/{user_id}/password:
+    put:
+      tags: [Users]
+      summary: Change password
+      description: Self or superadmin.
+      parameters:
+        - $ref: '#/components/parameters/user_id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password, password2]
+              properties:
+                password:
+                  type: string
+                  format: password
+                password2:
+                  type: string
+                  format: password
+                  description: Must match password
+      responses:
+        '200':
+          description: Password changed
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+        '422':
+          description: Invalid password
+
+  /users/{user_id}/welcome-dismissed:
+    put:
+      tags: [Users]
+      summary: Dismiss welcome message
+      description: Self only.
+      parameters:
+        - $ref: '#/components/parameters/user_id'
+      responses:
+        '200':
+          description: Welcome dismissed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageOk'
+
+  /users/{user_id}/send-confirmation:
+    post:
+      tags: [Users]
+      summary: Send email confirmation
+      description: Self, superadmin, or tenant admin for shared tenant member.
+      parameters:
+        - $ref: '#/components/parameters/user_id'
+      responses:
+        '200':
+          description: Confirmation email sent
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageOk'
+
+  /users/{user_id}/verify-confirmation-code:
+    post:
+      tags: [Users]
+      summary: Verify email confirmation code
+      description: Self only.
+      parameters:
+        - $ref: '#/components/parameters/user_id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [code]
+              properties:
+                code:
+                  type: string
+      responses:
+        '200':
+          description: Email confirmed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageOk'
+        '403':
+          description: Invalid confirmation code
+
+  /users/{user_id}/tenants:
+    get:
+      tags: [Users]
+      summary: List tenants for a user
+      description: Self or superadmin.
+      parameters:
+        - $ref: '#/components/parameters/user_id'
+      responses:
+        '200':
+          description: List of tenants
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    id:
+                      type: string
+                    name:
+                      type: string
+
+  /users/{user_id}/tenants/{tenant_id}/roles:
+    get:
+      tags: [Users]
+      summary: Get user roles in a tenant
+      description: Requires viewer role in the tenant.
+      parameters:
+        - $ref: '#/components/parameters/user_id'
+        - $ref: '#/components/parameters/tenant_id'
+      responses:
+        '200':
+          description: List of roles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: string
+
+  # ── Tenants ───────────────────────────────────────────────────────────────
+
+  /tenants:
+    get:
+      tags: [Tenants]
+      summary: List tenants for current user
+      responses:
+        '200':
+          description: Tenants the user belongs to
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Tenant'
+    post:
+      tags: [Tenants]
+      summary: Create a tenant
+      description: Requires the `can_user_create_tenant` flag and being under `tenant_limit`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                contact_email:
+                  type: string
+                  format: email
+                approved_domains:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+      responses:
+        '200':
+          description: Tenant created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+        '400':
+          description: Invalid input
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /tenants/{tenant_id}:
+    get:
+      tags: [Tenants]
+      summary: Get a tenant
+      description: Requires viewer role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+      responses:
+        '200':
+          description: Tenant details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+    put:
+      tags: [Tenants]
+      summary: Update a tenant
+      description: |
+        Requires admin role. Fields `license` and `flow_cap` require superadmin.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                contact_email:
+                  type: string
+                magic_link_login:
+                  type: boolean
+                approved_domains:
+                  oneOf:
+                    - type: string
+                    - type: array
+                      items:
+                        type: string
+                license:
+                  type: string
+                  description: Superadmin only
+                flow_cap:
+                  type: integer
+                  description: Superadmin only
+      responses:
+        '200':
+          description: Updated tenant
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Tenant'
+    delete:
+      tags: [Tenants]
+      summary: Delete a tenant
+      description: Requires admin role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+      responses:
+        '200':
+          description: Tenant deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageOk'
+
+  /tenants/{tenant_id}/users:
+    get:
+      tags: [Tenants]
+      summary: List members of a tenant
+      description: Requires viewer role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+      responses:
+        '200':
+          description: Tenant members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+    post:
+      tags: [Tenants]
+      summary: Add a user to a tenant
+      description: Requires admin role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                roles:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: User added
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /tenants/{tenant_id}/users/{user_id}:
+    put:
+      tags: [Tenants]
+      summary: Update a user within a tenant
+      description: Requires admin role. Can update profile fields and roles.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/user_id'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                display_name:
+                  type: string
+                license:
+                  type: string
+                trial_days:
+                  type: integer
+                roles:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        '200':
+          description: User updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageOk'
+    delete:
+      tags: [Tenants]
+      summary: Remove a user from a tenant
+      description: Requires admin role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/user_id'
+      responses:
+        '200':
+          description: User removed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageOk'
+
+  # ── Flows ─────────────────────────────────────────────────────────────────
+
+  /tenants/{tenant_id}/flows:
+    get:
+      tags: [Flows]
+      summary: List flows
+      description: Requires viewer role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/limit'
+      responses:
+        '200':
+          description: List of flows
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Flow'
+    post:
+      tags: [Flows]
+      summary: Create a flow
+      description: Requires editor role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  default: Untitled Flow
+      responses:
+        '201':
+          description: Flow created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Flow'
+
+  /tenants/{tenant_id}/flows/{flow_id}:
+    get:
+      tags: [Flows]
+      summary: Get a flow with nodes, edges, and notes
+      description: Requires viewer role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/flow_id'
+      responses:
+        '200':
+          description: Flow with full detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FlowDetail'
+    put:
+      tags: [Flows]
+      summary: Update flow metadata
+      description: Requires editor role. Updates name and/or folder.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/flow_id'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                folder:
+                  type: string
+      responses:
+        '200':
+          description: Updated flow
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Flow'
+    post:
+      tags: [Flows]
+      summary: Save flow (full canvas upsert)
+      description: |
+        Requires editor role. Upserts nodes, edges, and node configs.
+        Deletes nodes/edges no longer on canvas.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/flow_id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nodes:
+                  type: array
+                  items:
+                    type: object
+                edges:
+                  type: array
+                  items:
+                    type: object
+                node_configs:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      node_id:
+                        type: string
+                      config:
+                        type: object
+                notes:
+                  type: array
+                  items:
+                    type: object
+                name:
+                  type: string
+                publish:
+                  type: boolean
+      responses:
+        '200':
+          description: Save result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  nodes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        node_id:
+                          type: string
+                        id:
+                          type: string
+                  edges:
+                    type: integer
+                  notes:
+                    type: array
+    delete:
+      tags: [Flows]
+      summary: Delete a flow
+      description: Requires editor role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/flow_id'
+      responses:
+        '200':
+          description: Flow deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+
+  /tenants/{tenant_id}/flows/{flow_id}/run:
+    post:
+      tags: [Flows]
+      summary: Run a flow
+      description: Requires editor role. Queues a flow execution.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/flow_id'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                input_data:
+                  type: object
+                start_node_id:
+                  type: string
+                replay_data:
+                  type: object
+      responses:
+        '200':
+          description: Flow queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                  status:
+                    type: string
+                    example: queued
+
+  /tenants/{tenant_id}/flows/{flow_id}/toggle-publish:
+    post:
+      tags: [Flows]
+      summary: Toggle flow publish state
+      description: Requires editor role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/flow_id'
+      responses:
+        '200':
+          description: Publish state toggled
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  is_published:
+                    type: boolean
+
+  /tenants/{tenant_id}/flows/{flow_id}/schedule:
+    get:
+      tags: [Flows]
+      summary: Get flow schedule
+      description: Requires viewer role. Returns the cron schedule if active.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/flow_id'
+      responses:
+        '200':
+          description: Schedule info
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  active:
+                    type: boolean
+                  cron:
+                    type: string
+                  node_id:
+                    type: string
+
+  /tenants/{tenant_id}/web-forms:
+    get:
+      tags: [Forms]
+      summary: List flows with web form nodes
+      description: Requires user role (minimal).
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+      responses:
+        '200':
+          description: Flows with web forms
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  allOf:
+                    - $ref: '#/components/schemas/Flow'
+                    - type: object
+                      properties:
+                        node_id:
+                          type: string
+                        form_url:
+                          type: string
+
+  # ── Runs & Jobs ───────────────────────────────────────────────────────────
+
+  /tenants/{tenant_id}/flows/{flow_id}/runs:
+    get:
+      tags: [Runs & Jobs]
+      summary: List runs for a flow
+      description: Requires viewer role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/flow_id'
+        - $ref: '#/components/parameters/limit'
+      responses:
+        '200':
+          description: List of runs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Run'
+
+  /tenants/{tenant_id}/runs/{run_id}:
+    get:
+      tags: [Runs & Jobs]
+      summary: Get a run with logs
+      description: Requires viewer role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - name: run_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Run with logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Run'
+
+  /tenants/{tenant_id}/jobs/{job_id}:
+    get:
+      tags: [Runs & Jobs]
+      summary: Get job status
+      description: Requires viewer role on the associated flow.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job status
+          content:
+            application/json:
+              schema:
+                type: object
+
+  /tenants/{tenant_id}/jobs/{job_id}/cancel:
+    post:
+      tags: [Runs & Jobs]
+      summary: Cancel a running job
+      description: Requires editor role on the associated flow.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job cancelled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+
+  /tenants/{tenant_id}/queue/stats:
+    get:
+      tags: [Runs & Jobs]
+      summary: Get queue statistics
+      description: Superadmin only.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+      responses:
+        '200':
+          description: Queue stats
+          content:
+            application/json:
+              schema:
+                type: object
+
+  # ── Credentials ───────────────────────────────────────────────────────────
+
+  /tenants/{tenant_id}/credentials:
+    get:
+      tags: [Credentials]
+      summary: List credentials (masked)
+      description: Requires viewer role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+      responses:
+        '200':
+          description: List of credentials with masked data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Credential'
+    post:
+      tags: [Credentials]
+      summary: Create a credential
+      description: Requires editor role. Name must be lowercase alphanumeric with underscores.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  pattern: '^[a-z0-9_]+$'
+                label:
+                  type: string
+                integration:
+                  type: string
+                data:
+                  type: object
+                  description: Credential data (will be encrypted)
+      responses:
+        '201':
+          description: Credential created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Credential'
+        '400':
+          description: Invalid name
+        '409':
+          description: Name already exists
+
+  /tenants/{tenant_id}/credentials/{cred_id}:
+    put:
+      tags: [Credentials]
+      summary: Update a credential
+      description: Requires editor role. Must be owner or admin.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - name: cred_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                label:
+                  type: string
+                integration:
+                  type: string
+                data:
+                  type: object
+      responses:
+        '200':
+          description: Credential updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Credential'
+    delete:
+      tags: [Credentials]
+      summary: Delete a credential
+      description: Requires editor role. Must be owner or admin.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - name: cred_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Credential deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+
+  # ── Data Tables ───────────────────────────────────────────────────────────
+
+  /tenants/{tenant_id}/tables:
+    get:
+      tags: [Data Tables]
+      summary: List all tables
+      description: Requires viewer role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+      responses:
+        '200':
+          description: Tables with record counts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DataTable'
+
+  /tenants/{tenant_id}/tables/{table_name}:
+    get:
+      tags: [Data Tables]
+      summary: Get table records
+      description: Requires viewer role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - name: table_name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+        - name: key
+          in: query
+          schema:
+            type: string
+          description: Filter by record key
+      responses:
+        '200':
+          description: Table records
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  table:
+                    type: string
+                  total:
+                    type: integer
+                  records:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DataRecord'
+    delete:
+      tags: [Data Tables]
+      summary: Delete all records in a table
+      description: Requires editor role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - name: table_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Table deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  deleted:
+                    type: string
+
+  /tenants/{tenant_id}/tables/{table_name}/records:
+    get:
+      tags: [Data Tables]
+      summary: Get paginated table records
+      description: Requires viewer role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - name: table_name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: days
+          in: query
+          schema:
+            type: integer
+            default: 7
+            enum: [7, 14, 30, 45]
+          description: Records created within this many days
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 500
+            maximum: 1000
+      responses:
+        '200':
+          description: Paginated records
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  records:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DataRecord'
+                  page:
+                    type: integer
+                  per_page:
+                    type: integer
+                  total:
+                    type: integer
+                  pages:
+                    type: integer
+                  has_next:
+                    type: boolean
+    post:
+      tags: [Data Tables]
+      summary: Insert a record
+      description: Requires editor role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - name: table_name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                record_key:
+                  type: string
+                data:
+                  type: object
+      responses:
+        '200':
+          description: Record inserted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  action:
+                    type: string
+                  table:
+                    type: string
+                  id:
+                    type: string
+                  key:
+                    type: string
+                  data:
+                    type: object
+
+  /tenants/{tenant_id}/tables/{table_name}/records/{record_id}:
+    put:
+      tags: [Data Tables]
+      summary: Update a record
+      description: Requires editor role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - name: table_name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: record_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                data:
+                  type: object
+      responses:
+        '200':
+          description: Record updated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                  record:
+                    $ref: '#/components/schemas/DataRecord'
+    delete:
+      tags: [Data Tables]
+      summary: Delete a record
+      description: Requires editor role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - name: table_name
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: record_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Record deleted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+
+  /tenants/{tenant_id}/tables/{table_name}/schema:
+    get:
+      tags: [Data Tables]
+      summary: Get table schema
+      description: Requires viewer role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - name: table_name
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Table schema
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  table:
+                    type: string
+                  fields:
+                    type: array
+                    items:
+                      type: object
+    post:
+      tags: [Data Tables]
+      summary: Create a table schema
+      description: Requires editor role. Fails if table already exists.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - name: table_name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fields]
+              properties:
+                fields:
+                  type: array
+                  items:
+                    type: object
+                  minItems: 1
+      responses:
+        '201':
+          description: Schema created
+        '400':
+          description: No fields provided
+        '409':
+          description: Table already exists
+    put:
+      tags: [Data Tables]
+      summary: Update a table schema
+      description: Requires editor role. Removes dropped columns from existing records.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - name: table_name
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fields]
+              properties:
+                fields:
+                  type: array
+                  items:
+                    type: object
+                  minItems: 1
+      responses:
+        '200':
+          description: Schema updated
+        '404':
+          description: Table not found
+
+  # ── Tickets ───────────────────────────────────────────────────────────────
+
+  /tenants/{tenant_id}/tickets:
+    get:
+      tags: [Tickets]
+      summary: List tickets
+      description: Requires viewer role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [open, in_progress, resolved, closed]
+        - name: priority
+          in: query
+          schema:
+            type: string
+            enum: [low, medium, high, critical]
+        - name: assignee
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/limit'
+      responses:
+        '200':
+          description: List of tickets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Ticket'
+    post:
+      tags: [Tickets]
+      summary: Create a ticket
+      description: Requires editor role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                status:
+                  type: string
+                  default: open
+                priority:
+                  type: string
+                  default: medium
+                assignee:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+                content:
+                  type: object
+                meta:
+                  type: object
+                flow_id:
+                  type: string
+                flow_run_id:
+                  type: string
+                node_id:
+                  type: string
+      responses:
+        '201':
+          description: Ticket created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+
+  /tenants/{tenant_id}/tickets/{ticket_id}:
+    get:
+      tags: [Tickets]
+      summary: Get a ticket
+      description: Requires viewer role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/ticket_id'
+      responses:
+        '200':
+          description: Ticket details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+    put:
+      tags: [Tickets]
+      summary: Update a ticket
+      description: Requires editor role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/ticket_id'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                status:
+                  type: string
+                priority:
+                  type: string
+                assignee:
+                  type: string
+                tags:
+                  type: array
+                  items:
+                    type: string
+                content:
+                  type: object
+                meta:
+                  type: object
+      responses:
+        '200':
+          description: Ticket updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ticket'
+    delete:
+      tags: [Tickets]
+      summary: Delete a ticket
+      description: Requires editor role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/ticket_id'
+      responses:
+        '200':
+          description: Ticket deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  /tenants/{tenant_id}/tickets/{ticket_id}/comments:
+    get:
+      tags: [Tickets]
+      summary: List comments on a ticket
+      description: Requires viewer role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/ticket_id'
+      responses:
+        '200':
+          description: List of comments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TicketComment'
+    post:
+      tags: [Tickets]
+      summary: Add a comment to a ticket
+      description: Requires editor role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/ticket_id'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                author:
+                  type: string
+                  default: Anonymous
+                body:
+                  type: string
+      responses:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TicketComment'
+
+  /tenants/{tenant_id}/tickets/{ticket_id}/comments/{comment_id}:
+    delete:
+      tags: [Tickets]
+      summary: Delete a comment
+      description: Requires editor role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/ticket_id'
+        - name: comment_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Comment deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  # ── Dashboards ────────────────────────────────────────────────────────────
+
+  /tenants/{tenant_id}/dashboards:
+    get:
+      tags: [Dashboards]
+      summary: List dashboards
+      description: Requires viewer role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/limit'
+      responses:
+        '200':
+          description: List of dashboards
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Dashboard'
+    post:
+      tags: [Dashboards]
+      summary: Create a dashboard
+      description: Requires editor role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  default: Untitled Dashboard
+                widgets:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        '201':
+          description: Dashboard created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+
+  /tenants/{tenant_id}/dashboards/{dashboard_id}:
+    get:
+      tags: [Dashboards]
+      summary: Get a dashboard
+      description: Requires viewer role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/dashboard_id'
+      responses:
+        '200':
+          description: Dashboard details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+    put:
+      tags: [Dashboards]
+      summary: Update a dashboard
+      description: Requires editor role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/dashboard_id'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                widgets:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        '200':
+          description: Dashboard updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+    delete:
+      tags: [Dashboards]
+      summary: Delete a dashboard
+      description: Requires editor role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/dashboard_id'
+      responses:
+        '200':
+          description: Dashboard deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+
+  # ── Forms (Builder) ──────────────────────────────────────────────────────
+
+  /tenants/{tenant_id}/flows/{flow_id}/nodes/{node_id}/form:
+    get:
+      tags: [Forms]
+      summary: Get form definition for a node
+      description: Requires viewer role. Resolves template variables from session/URL params.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/flow_id'
+        - name: node_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: session
+          in: query
+          schema:
+            type: string
+          description: Form session token for multi-step forms
+      responses:
+        '200':
+          description: Form definition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormDefinition'
+    put:
+      tags: [Forms]
+      summary: Save form definition for a node
+      description: Requires editor role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+        - $ref: '#/components/parameters/flow_id'
+        - name: node_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title:
+                  type: string
+                description:
+                  type: string
+                elements:
+                  type: array
+                  items:
+                    type: object
+      responses:
+        '200':
+          description: Form saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ok'
+
+  # ── Forms (Public) ───────────────────────────────────────────────────────
+
+  /forms/{node_id}:
+    get:
+      tags: [Forms]
+      summary: Get a public form
+      description: No authentication required. Rate limited to 5/second.
+      security: []
+      parameters:
+        - name: node_id
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: session
+          in: query
+          schema:
+            type: string
+          description: Form session token
+      responses:
+        '200':
+          description: Form definition
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FormDefinition'
+        '404':
+          description: Form not found
+
+  /forms/{node_id}/submit:
+    post:
+      tags: [Forms]
+      summary: Submit a public form
+      description: No authentication required. Rate limited to 5/second.
+      security: []
+      parameters:
+        - name: node_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Form submitted
+        '403':
+          description: Form not published
+        '404':
+          description: Form not found
+
+  /form-jobs/{job_id}:
+    get:
+      tags: [Forms]
+      summary: Poll form submission job status
+      description: Public endpoint for checking form submission progress.
+      security: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Job status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id:
+                    type: string
+                  status:
+                    type: string
+                  result:
+                    type: object
+                    nullable: true
+                  error:
+                    type: string
+                    nullable: true
+
+  /form-sessions/{token}:
+    get:
+      tags: [Forms]
+      summary: Get form session data
+      description: Public endpoint for multi-step form state.
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Form session state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  token:
+                    type: string
+                  flow_id:
+                    type: string
+                  current_node_id:
+                    type: string
+                  step_index:
+                    type: integer
+                  total_steps:
+                    type: integer
+                  prefill:
+                    type: object
+
+  # ── Webhooks ──────────────────────────────────────────────────────────────
+
+  /webhook/{node_id}:
+    get:
+      tags: [Webhooks]
+      summary: Trigger a webhook
+      description: |
+        Public endpoint. Supports GET, POST, PUT, DELETE, PATCH.
+        Authentication via the `Authorization` header if configured on the webhook node.
+      security: []
+      parameters:
+        - name: node_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Webhook response (configurable)
+          content:
+            application/json:
+              schema:
+                type: object
+        '401':
+          description: Unauthorized
+        '404':
+          description: Webhook not found
+        '405':
+          description: Method not allowed
+    post:
+      tags: [Webhooks]
+      summary: Trigger a webhook (POST)
+      security: []
+      parameters:
+        - name: node_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Webhook response
+          content:
+            application/json:
+              schema:
+                type: object
+
+  # ── Integrations ──────────────────────────────────────────────────────────
+
+  /integrations:
+    get:
+      tags: [Integrations]
+      summary: List available integrations
+      description: Returns integrations with sensitive fields stripped.
+      responses:
+        '200':
+          description: Available integrations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /operators:
+    get:
+      tags: [Integrations]
+      summary: List available operators
+      responses:
+        '200':
+          description: Operator schema
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  # ── Logs ──────────────────────────────────────────────────────────────────
+
+  /logs:
+    get:
+      tags: [Logs]
+      summary: Get system logs
+      description: Superadmin only.
+      responses:
+        '200':
+          description: Recent logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  /tenants/{tenant_id}/logs:
+    get:
+      tags: [Logs]
+      summary: Get tenant logs
+      description: Requires viewer role.
+      parameters:
+        - $ref: '#/components/parameters/tenant_id'
+      responses:
+        '200':
+          description: Tenant logs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+
+  # ── Feedback ──────────────────────────────────────────────────────────────
+
+  /feedback:
+    post:
+      tags: [Feedback]
+      summary: Submit feedback
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [message]
+              properties:
+                message:
+                  type: string
+                email:
+                  type: string
+                page:
+                  type: string
+      responses:
+        '200':
+          description: Feedback submitted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessageOk'
+        '400':
+          description: Message is required
+
+  # ── Misc ──────────────────────────────────────────────────────────────────
+
+  /email-check:
+    get:
+      tags: [Health]
+      summary: Send test email
+      description: Superadmin only. Sends a test email to the current user.
+      responses:
+        '200':
+          description: Email attempt result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  success:
+                    type: boolean

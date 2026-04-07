@@ -1,0 +1,48 @@
+{% macro filehelper(driver=False, select=False, drawflow=False, editor=False, charts=False) -%}
+
+  {% if driver %}
+    <script src="https://cdn.jsdelivr.net/npm/driver.js@1.3.6/dist/driver.js.iife.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.6/dist/driver.css"/>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/driver.css') }}"/>
+  {% endif %}
+
+  {% if select %}
+    <script src="https://unpkg.com/slim-select@latest/dist/slimselect.min.js"></script>
+    <link rel="stylesheet" href="https://unpkg.com/slim-select@latest/dist/slimselect.css" />
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/custom-slim.css') }}"/>
+  {% endif %}
+
+  {% if drawflow %}
+    <!-- Drawflow -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/drawflow@0.0.59/dist/drawflow.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/drawflow@0.0.59/dist/drawflow.min.js"></script>
+    <script src="{{ url_for('static', filename='js/variable-picker.js') }}"></script>
+    <link rel="stylesheet" type="text/css" href="{{ url_for('static', filename='css/drawflow.css') }}" />
+
+    <!-- Ace Editor -->
+    <script src="https://cdn.jsdelivr.net/npm/ace-builds@1.36.5/src-min-noconflict/ace.js"></script>
+  {% endif %}
+
+  {% if editor %}
+    <!-- editor.js -->
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/editorjs@2.30.8"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/header@2.8.8"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/list@1.10.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/checklist@1.6.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/quote@2.7.6"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/delimiter@1.4.2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/code@2.9.3"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/table@2.4.2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/marker@1.4.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@editorjs/inline-code@1.5.1"></script>
+  {% endif %}
+
+  {% if charts %}
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack.min.css" />
+    <script src="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-all.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+  {% endif %}
+
+{%- endmacro %}

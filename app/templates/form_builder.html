@@ -1,0 +1,658 @@
+{% extends "layouts/base.html" %}
+
+{% block head %}
+  <link rel="stylesheet" type="text/css" href="/static/css/form_builder.css" />
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+  <script>
+    marked.setOptions({ breaks: true });
+    const renderer = new marked.Renderer();
+    renderer.link = function(href, title, text) {
+      return `<a href="${href}" target="_blank" rel="noopener" class="link link-primary"${title ? ` title="${title}"` : ''}>${text}</a>`;
+    };
+    marked.use({ renderer });
+  </script>
+{% endblock %}
+
+{% block content %}
+<div x-data="formBuilder">
+
+  <!-- ══ TOPBAR ══ -->
+  <div class="navbar bg-base-100 border-b border-base-300 px-4 min-h-[48px] h-[48px] z-50 shadow-sm flex-shrink-0">
+    <!-- Breadcrumb -->
+    <div class="breadcrumbs text-sm">
+      <ul>
+        <li>
+          <a class="text-[12px] opacity-50 hover:opacity-80 transition-opacity" :href="'/flows/' + flowId" x-text="flowName">My Flow</a>
+        </li>
+        <li>
+          <span class="text-[12px] font-semibold flex items-center gap-1.5">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-3.5 h-3.5 opacity-50"><path d="M3 5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M3 10h18"/><path d="M10 3v18"/></svg>
+            Form Builder
+          </span>
+        </li>
+      </ul>
+    </div>
+
+    <div class="flex-1"></div>
+
+    <span class="text-[11px] opacity-40 mr-3" x-text="`${elements.length} elements`"></span>
+
+    <button class="btn btn-ghost btn-sm gap-1 mr-1" @click="copyFormLink()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71"/></svg>
+      Copy Link
+    </button>
+    <button class="btn btn-sm gap-1 mr-1" :class="previewMode ? 'btn-primary' : 'btn-ghost'" @click="previewMode = !previewMode">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg>
+      <span x-text="previewMode ? 'Edit' : 'Preview'"></span>
+    </button>
+    <button x-show="!previewMode" class="btn btn-primary btn-sm gap-1" @click="saveForm()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v11a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+      Save
+    </button>
+  </div>
+
+  <!-- ══ LAYOUT ══ -->
+  <div class="flex flex-1 overflow-hidden">
+
+    <!-- ══ LEFT: Element Palette ══ -->
+    <div class="w-[220px] bg-base-100 border-r border-base-300 flex flex-col flex-shrink-0 overflow-hidden" x-show="!previewMode" x-transition>
+      <div class="p-3 border-b border-base-300">
+        <div class="text-[10px] font-bold uppercase tracking-wider opacity-40">Elements</div>
+      </div>
+      <div class="flex-1 overflow-y-auto p-2 dark-scroll">
+        <template x-for="el in palette" :key="el.type">
+          <div class="element-palette-item flex items-center gap-2.5 p-2.5 rounded-lg border border-base-300 bg-base-100 mb-1.5 cursor-grab select-none"
+               draggable="true"
+               @dragstart="onPaletteDragStart($event, el.type)">
+            <div class="w-7 h-7 rounded-md bg-base-200 flex items-center justify-center text-[13px] flex-shrink-0" x-html="el.icon"></div>
+            <div class="min-w-0">
+              <div class="text-[11px] font-semibold" x-text="el.label"></div>
+              <div class="text-[9.5px] opacity-40" x-text="el.desc"></div>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+    <!-- ══ CENTER: Form Canvas ══ -->
+    <div :class="{'my-4 rounded-lg': previewMode}" class="flex-1 overflow-y-auto p-8 bg-base-200 max-w-3xl mx-auto">
+      <div class="max-w-[640px] mx-auto">
+        <!-- Form header -->
+        <div class="mb-4" x-show="!previewMode">
+          <input class="text-xl font-bold bg-transparent border-none outline-none w-full placeholder-base-content/30"
+                 x-model="formTitle" placeholder="Untitled Form" />
+          <input class="text-sm bg-transparent border-none outline-none w-full mt-1 placeholder-base-content/20"
+                 x-model="formDescription" placeholder="Add a description…" />
+        </div>
+        <!-- Preview header -->
+        <div class="mb-6" x-show="previewMode">
+          <h1 class="text-xl font-bold" x-text="formTitle || 'Untitled Form'"></h1>
+          <p class="text-sm opacity-50 mt-1" x-show="formDescription" x-text="formDescription"></p>
+        </div>
+
+        <!-- Canvas drop area -->
+        <div class="rounded-xl transition-colors"
+             :class="previewMode ? 'form-preview-frame' : 'form-canvas-drop border-2 border-dashed border-base-300 ' + (isDraggingOver ? 'border-primary bg-primary/5' : '')"
+             @dragover.prevent="!previewMode && onCanvasDragOver($event)"
+             @dragleave="isDraggingOver = false"
+             @drop.prevent="!previewMode && onCanvasDrop($event)">
+
+          <!-- Empty state -->
+          <div x-show="!elements.length && !previewMode" class="flex flex-col items-center justify-center py-20 opacity-80">
+            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="mb-3 opacity-50"><path d="M12 5v14M5 12h14"/></svg>
+            <div class="text-sm font-medium">Drag elements here</div>
+            <div class="text-xs mt-1">Build your form by dragging elements from the left panel</div>
+          </div>
+
+          <!-- Form elements -->
+          <div :class="{'px-4': !previewMode}" class="py-4 space-y-0" id="form-elements-list">
+            <template x-for="(el, index) in elements" :key="el.id">
+              <div>
+                <!-- Drop indicator above -->
+                <div class="drop-indicator" x-show="!previewMode" :id="'drop-before-' + el.id"
+                     :class="dropTarget === el.id && dropPosition === 'before' ? 'visible' : ''"></div>
+
+                <div class="form-element rounded-lg p-4 my-1.5"
+                     :class="previewMode ? 'bg-transparent border border-transparent' : 'border border-base-300 bg-base-100 cursor-pointer ' + (selectedElement === el.id ? 'selected' : '')"
+                     :id="'form-el-' + el.id"
+                     @click="!previewMode && selectElement(el.id)"
+                     :draggable="!previewMode"
+                     @dragstart="!previewMode && onElementDragStart($event, el.id)"
+                     @dragover.prevent="!previewMode && onElementDragOver($event, el.id)"
+                     @dragleave="clearDropTarget()"
+                     @drop.prevent.stop="!previewMode && onElementDrop($event, el.id)">
+
+                  <!-- Drag handle -->
+                  <div class="drag-handle" x-show="!previewMode">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="5" r="1"/><circle cx="9" cy="12" r="1"/><circle cx="9" cy="19" r="1"/><circle cx="15" cy="5" r="1"/><circle cx="15" cy="12" r="1"/><circle cx="15" cy="19" r="1"/></svg>
+                  </div>
+
+                  <!-- Actions -->
+                  <div class="element-actions" x-show="!previewMode">
+                    <button class="btn btn-ghost btn-xs btn-square" @click.stop="duplicateElement(el.id)" title="Duplicate">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 8m0 2a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2h-8a2 2 0 01-2-2z"/><path d="M16 8v-2a2 2 0 00-2-2H6a2 2 0 00-2 2v8a2 2 0 002 2h2"/></svg>
+                    </button>
+                    <button class="btn btn-ghost btn-xs btn-square text-error" @click.stop="removeElement(el.id)" title="Delete">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7l16 0"/><path d="M5 7l1 12a2 2 0 002 2h8a2 2 0 002-2l1-12"/><path d="M9 7v-3a1 1 0 011-1h4a1 1 0 011 1v3"/></svg>
+                    </button>
+                  </div>
+
+                  <!-- Rendered element -->
+                  <div x-html="previewMode ? renderLiveElement(el) : renderElement(el)"></div>
+                </div>
+
+                <!-- Drop indicator below -->
+                <div class="drop-indicator" x-show="!previewMode" :id="'drop-after-' + el.id"
+                     :class="dropTarget === el.id && dropPosition === 'after' ? 'visible' : ''"></div>
+              </div>
+            </template>
+          </div>
+<!-- Submit button (preview only) -->
+          <div x-show="previewMode && elements.length" class="p-4">
+            <button class="btn btn-primary w-full" @click="toast('Form submitted (preview mode)', 'info')">Submit</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ══ RIGHT: Properties Panel ══ -->
+    <div class="w-[280px] bg-base-100 border-l border-base-300 flex flex-col flex-shrink-0 overflow-hidden"
+         x-show="!previewMode" x-transition
+         :class="selectedElement ? '' : 'opacity-50 pointer-events-none'">
+      <div class="p-3 border-b border-base-300">
+        <div class="text-[10px] font-bold uppercase tracking-wider opacity-40">Properties</div>
+      </div>
+      <div class="flex-1 overflow-y-auto p-3 dark-scroll">
+        <template x-if="selectedElementData">
+          <div>
+            <!-- Label -->
+            <div class="form-control mb-3">
+              <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Label</span></label>
+              <input class="input input-bordered input-sm" x-model="selectedElementData.label" @input="updateElement()" />
+            </div>
+
+            <!-- Placeholder (for inputs) -->
+            <template x-if="hasProperty('placeholder')">
+              <div class="form-control mb-3">
+                <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Placeholder</span></label>
+                <input class="input input-bordered input-sm" x-model="selectedElementData.placeholder" @input="updateElement()" />
+              </div>
+            </template>
+
+            <!-- Content (for header/paragraph) -->
+            <template x-if="hasProperty('content')">
+              <div class="form-control mb-3">
+                <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Content</span></label>
+                <textarea class="textarea textarea-bordered textarea-sm" rows="3" x-model="selectedElementData.content" @input="updateElement()"></textarea>
+              </div>
+            </template>
+
+            <!-- Heading level -->
+            <template x-if="selectedElementData.type === 'heading'">
+              <div class="form-control mb-3">
+                <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Level</span></label>
+                <select class="select select-bordered select-sm" x-model="selectedElementData.level" @change="updateElement()">
+                  <option value="h1">H1 — Large</option>
+                  <option value="h2">H2 — Medium</option>
+                  <option value="h3">H3 — Small</option>
+                </select>
+              </div>
+            </template>
+
+            <!-- Field name (for inputs) -->
+            <template x-if="hasProperty('fieldName')">
+              <div class="form-control mb-3">
+                <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Field name</span></label>
+                <input class="input input-bordered input-sm font-mono text-[11px]" x-model="selectedElementData.fieldName" @input="updateElement()" placeholder="field_name" />
+                <div class="text-[9px] opacity-40 mt-1">Used in the form submission data</div>
+              </div>
+            </template>
+
+            <!-- Options (for select/radio/checkbox) -->
+            <template x-if="hasProperty('options')">
+              <div class="form-control mb-3">
+                <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Options</span></label>
+                <template x-for="(opt, oi) in selectedElementData.options" :key="oi">
+                  <div class="flex gap-1 mb-1">
+                    <input class="input input-bordered input-sm flex-1" x-model="selectedElementData.options[oi]" @input="updateElement()" />
+                    <button class="btn btn-ghost btn-xs btn-square text-error" @click="removeOption(oi)">×</button>
+                  </div>
+                </template>
+                <button class="btn btn-ghost btn-xs border-dashed border-base-300 gap-1 w-full mt-1" @click="addOption()">+ Add option</button>
+              </div>
+            </template>
+
+            <!-- Accept types (for file) -->
+            <template x-if="selectedElementData.type === 'file'">
+              <div class="form-control mb-3">
+                <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Accepted files</span></label>
+                <input class="input input-bordered input-sm" x-model="selectedElementData.accept" @input="updateElement()" placeholder=".pdf,.doc,.jpg" />
+              </div>
+            </template>
+            <!-- Data Table properties -->
+            <template x-if="selectedElementData.type === 'datatable'">
+              <div>
+                <div class="form-control mb-3">
+                  <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Data source</span></label>
+                  <input class="input input-bordered input-sm font-mono text-[11px]" x-model="selectedElementData.dataSource" @input="updateElement()" placeholder="e.g. Table.items" />
+                  <div class="text-[9px] opacity-40 mt-1">Variable that resolves to an array of objects</div>
+                </div>
+
+                <div class="form-control mb-3">
+                  <label class="label pb-1"><span class="label-text text-[11px] font-semibold">Columns</span></label>
+                  <template x-for="(col, ci) in selectedElementData.columns" :key="ci">
+                    <div class="flex gap-1 mb-1.5">
+                      <input class="input input-bordered input-sm flex-1 font-mono text-[10px]" x-model="selectedElementData.columns[ci].name" @input="updateElement()" placeholder="field_name" />
+                      <input class="input input-bordered input-sm flex-1" x-model="selectedElementData.columns[ci].label" @input="updateElement()" placeholder="Display Label" />
+                      <button class="btn btn-ghost btn-xs btn-square text-error flex-shrink-0" @click="selectedElementData.columns.splice(ci, 1); updateElement()">×</button>
+                    </div>
+                  </template>
+                  <button class="btn btn-ghost btn-xs border-dashed border-base-300 gap-1 w-full mt-1" @click="selectedElementData.columns.push({name: '', label: ''}); updateElement()">+ Add column</button>
+                  <div class="text-[9px] opacity-40 mt-1">Map object keys to table columns</div>
+                </div>
+              </div>
+            </template>
+            <div class="divider my-2 text-[9px] opacity-40">Validation</div>
+
+            <!-- Required -->
+            <template x-if="hasProperty('required')">
+              <div class="form-control mb-3">
+                <label class="label cursor-pointer justify-start gap-2">
+                  <input type="checkbox" class="checkbox checkbox-sm checkbox-primary" x-model="selectedElementData.required" @change="updateElement()" />
+                  <span class="label-text text-[11px]">Required</span>
+                </label>
+              </div>
+            </template>
+
+            <div class="divider my-2 text-[9px] opacity-40">Visibility</div>
+
+            <!-- Conditional visibility -->
+            <div class="form-control mb-3">
+              <label class="label cursor-pointer justify-start gap-2">
+                <input type="checkbox" class="checkbox checkbox-sm" x-model="selectedElementData.hasCondition" @change="updateElement()" />
+                <span class="label-text text-[11px]">Show/hide based on another field</span>
+              </label>
+            </div>
+
+            <template x-if="selectedElementData.hasCondition">
+              <div class="pl-1">
+                <div class="form-control mb-2">
+                  <label class="label pb-1"><span class="label-text text-[10px]">When field</span></label>
+                  <select class="select select-bordered select-sm" x-model="selectedElementData.conditionField" @change="updateElement()">
+                    <option value="">Select field…</option>
+                    <template x-for="other in otherFieldElements" :key="other.id">
+                      <option :value="other.fieldName" x-text="other.label || other.fieldName"></option>
+                    </template>
+                  </select>
+                </div>
+                <div class="form-control mb-2">
+                  <label class="label pb-1"><span class="label-text text-[10px]">Operator</span></label>
+                  <select class="select select-bordered select-sm" x-model="selectedElementData.conditionOp" @change="updateElement()">
+                    <option value="equals">equals</option>
+                    <option value="not_equals">does not equal</option>
+                    <option value="not_empty">is not empty</option>
+                    <option value="empty">is empty</option>
+                  </select>
+                </div>
+                <template x-if="['equals','not_equals'].includes(selectedElementData.conditionOp)">
+                  <div class="form-control mb-2">
+                    <label class="label pb-1"><span class="label-text text-[10px]">Value</span></label>
+                    <input class="input input-bordered input-sm" x-model="selectedElementData.conditionValue" @input="updateElement()" />
+                  </div>
+                </template>
+              </div>
+            </template>
+
+          </div>
+        </template>
+
+        <!-- No selection -->
+        <template x-if="!selectedElement">
+          <div class="flex flex-col items-center justify-center h-full text-center">
+            <div class="text-2xl mb-2">👆</div>
+            <div>
+              <span class="text-xs text-neutral">Click an element to edit its properties</span>
+            </div>
+          </div>
+        </template>
+      </div>
+    </div>
+
+  </div>
+
+{% raw %}
+<script>
+document.addEventListener('alpine:init', () => {
+  Alpine.data('formBuilder', () => ({
+
+    // ── State ──
+    flowName: 'My Flow',
+    formTitle: '',
+    formDescription: '',
+    elements: [],
+    selectedElement: null,
+    isDraggingOver: false,
+    dragType: null,          // 'palette' or 'reorder'
+    dragPayload: null,       // element type or element id
+    dropTarget: null,
+    dropPosition: null,      // 'before' or 'after'
+    _idCounter: 0,
+    previewMode: false,
+
+    // ── URL Params ──
+    get flowId() { return new URLSearchParams(window.location.search).get('flow_id') || ''; },
+    get nodeId() { return new URLSearchParams(window.location.search).get('node_id') || ''; },
+
+    // ── Selected element data ──
+    get selectedElementData() {
+      return this.elements.find(e => e.id === this.selectedElement) || null;
+    },
+
+    get otherFieldElements() {
+      return this.elements.filter(e =>
+        e.id !== this.selectedElement &&
+        ['text', 'email', 'number', 'textarea', 'select', 'radio', 'checkbox', 'file'].includes(e.type)
+      );
+    },
+
+    // ── Element Palette ──
+    palette: [
+      { type: 'heading',   label: 'Heading',     desc: 'Section title',       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M7 4v16M17 4v16M7 12h10"/></svg>' },
+      { type: 'paragraph', label: 'Paragraph',   desc: 'Description text',    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M4 6h16M4 12h16M4 18h10"/></svg>' },
+      { type: 'divider',   label: 'Divider',     desc: 'Horizontal line',     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M4 12h16"/></svg>' },
+      { type: 'text',      label: 'Text Input',  desc: 'Single line text',    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M4 6a2 2 0 012-2h12a2 2 0 012 2v12a2 2 0 01-2 2H6a2 2 0 01-2-2z"/><path d="M8 10h8"/></svg>' },
+      { type: 'email',     label: 'Email',       desc: 'Email address',       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M4 6l8 5 8-5"/><rect x="2" y="4" width="20" height="16" rx="2"/></svg>' },
+      { type: 'number',    label: 'Number',      desc: 'Numeric input',       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M4 17l6-12M14 17l6-12M3 10h7M14 10h7"/></svg>' },
+      { type: 'textarea',  label: 'Text Area',   desc: 'Multi-line text',     icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 7h10M7 11h10M7 15h6"/></svg>' },
+      { type: 'select',    label: 'Dropdown',    desc: 'Select from options',  icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M6 9l6 6 6-6"/></svg>' },
+      { type: 'radio',     label: 'Radio',       desc: 'Single choice',       icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="w-4 h-4"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4" fill="currentColor"/></svg>' },
+      { type: 'checkbox',  label: 'Checkbox',    desc: 'Multiple choices',    icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 12l2 2 4-4"/></svg>' },
+      { type: 'file',      label: 'File Upload', desc: 'Upload files',        icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>' },
+      { type: 'date',      label: 'Date',        desc: 'Date picker',         icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>' },
+      { type: 'datatable', label: 'Data Table',  desc: 'Display array as table', icon: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" class="w-4 h-4"><path d="M3 5a2 2 0 012-2h14a2 2 0 012 2v14a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><path d="M3 10h18"/><path d="M3 15h18"/><path d="M10 3v18"/></svg>' },
+    ],
+
+    // ── Init ──
+    init() {
+      this.loadForm();
+      this.loadFlowName();
+    },
+    async loadFlowName() {
+      try {
+        const res = await fetch(`/api/tenants/${this.$store.app.tenantId}/flows/${this.flowId}`);
+        const data = await res.json();
+        this.flowName = data.name || 'My Flow';
+      } catch {}
+    },
+    // ── Element factory ──
+    createElement(type) {
+      const id = `el_${++this._idCounter}_${Date.now()}`;
+      const base = { id, type, label: '', required: false, hasCondition: false, conditionField: '', conditionOp: 'equals', conditionValue: '' };
+
+      switch (type) {
+        case 'heading':   return { ...base, content: 'Section Title', level: 'h2' };
+        case 'paragraph': return { ...base, content: 'Add your description text here to assist the user completing the form.' };
+        case 'divider':   return { ...base };
+        case 'text':      return { ...base, label: 'Text Field', fieldName: `text_${this._idCounter}`, placeholder: 'Enter text…' };
+        case 'email':     return { ...base, label: 'Email', fieldName: `email_${this._idCounter}`, placeholder: 'you@example.com' };
+        case 'number':    return { ...base, label: 'Number', fieldName: `number_${this._idCounter}`, placeholder: '0' };
+        case 'textarea':  return { ...base, label: 'Message', fieldName: `message_${this._idCounter}`, placeholder: 'Enter your message…' };
+        case 'select':    return { ...base, label: 'Choose One', fieldName: `select_${this._idCounter}`, options: ['Option 1', 'Option 2', 'Option 3'] };
+        case 'radio':     return { ...base, label: 'Choose One', fieldName: `radio_${this._idCounter}`, options: ['Option 1', 'Option 2'] };
+        case 'checkbox':  return { ...base, label: 'Select All That Apply', fieldName: `checkbox_${this._idCounter}`, options: ['Option 1', 'Option 2'] };
+        case 'file':      return { ...base, label: 'Upload File', fieldName: `file_${this._idCounter}`, accept: '' };
+        case 'date':      return { ...base, label: 'Date', fieldName: `date_${this._idCounter}`, placeholder: '' };
+        case 'datatable': return { ...base, label: 'Data Table', dataSource: '', columns: [] };
+        default:          return { ...base, label: type };
+      }
+    },
+
+    // ── Render element preview ──
+    renderElement(el) {
+      const req = el.required ? '<span class="text-error ml-0.5">*</span>' : '';
+      const label = el.label ? `<label class="text-[12px] font-semibold mb-1 block">${this.escHtml(el.label)}${req}</label>` : '';
+
+      switch (el.type) {
+        case 'heading': {
+          const sizes = { h1: 'text-xl font-bold', h2: 'text-lg font-bold', h3: 'text-base font-semibold' };
+          return `<div class="${sizes[el.level] || sizes.h2}">${this.escHtml(el.content)}</div>`;
+        }
+        case 'paragraph':
+          return `<div class="text-sm opacity-60 leading-relaxed prose prose-sm">${marked.parse(el.content || '')}</div>`;
+        case 'divider':
+          return '<div class="border-t border-base-300 my-1"></div>';
+        case 'text':
+        case 'email':
+        case 'number':
+        case 'date':
+          return `${label}<input class="input input-bordered input-sm w-full pointer-events-none" type="${el.type}" placeholder="${this.escHtml(el.placeholder || '')}" disabled />`;
+        case 'textarea':
+          return `${label}<textarea class="textarea textarea-bordered textarea-sm w-full pointer-events-none" rows="3" placeholder="${this.escHtml(el.placeholder || '')}" disabled></textarea>`;
+        case 'select':
+          return `${label}<select class="select select-bordered select-sm w-full pointer-events-none" disabled><option>${(el.options || []).join('</option><option>')}</option></select>`;
+        case 'radio':
+          return `${label}<div class="space-y-1">${(el.options || []).map(o => `<label class="flex items-center gap-2 text-[12px]"><input type="radio" class="radio radio-sm" disabled />${this.escHtml(o)}</label>`).join('')}</div>`;
+        case 'checkbox':
+          return `${label}<div class="space-y-1">${(el.options || []).map(o => `<label class="flex items-center gap-2 text-[12px]"><input type="checkbox" class="checkbox checkbox-sm" disabled />${this.escHtml(o)}</label>`).join('')}</div>`;
+        case 'file':
+          return `${label}<div class="border-2 border-dashed border-base-300 rounded-lg p-4 text-center"><div class="text-xs opacity-40">Click or drag to upload${el.accept ? ` (${el.accept})` : ''}</div></div>`;
+        case 'datatable': {
+          const cols = el.columns?.length ? el.columns : [{name: 'column_1', label: 'Column 1'}, {name: 'column_2', label: 'Column 2'}];
+          return `${label}
+            <div class="border border-base-300 rounded-lg overflow-hidden">
+              <div class="text-[9px] font-mono opacity-40 px-2 py-1 bg-base-200 border-b border-base-300">Source: ${this.escHtml(el.dataSource || '{{variable}}')}</div>
+              <table class="table table-xs table-zebra w-full">
+                <thead><tr>${cols.map(c => `<th class="text-[10px]">${this.escHtml(c.label || c.name)}</th>`).join('')}</tr></thead>
+                <tbody>
+                  <tr>${cols.map(() => `<td class="text-[10px] opacity-40">—</td>`).join('')}</tr>
+                  <tr>${cols.map(() => `<td class="text-[10px] opacity-40">—</td>`).join('')}</tr>
+                </tbody>
+              </table>
+            </div>`;
+        }
+        default:
+          return `<div class="text-xs opacity-40">Unknown: ${el.type}</div>`;
+      }
+    },
+    renderLiveElement(el) {
+      const req = el.required ? '<span class="text-error ml-0.5">*</span>' : '';
+      const label = el.label ? `<label class="text-[12px] font-semibold mb-1 block">${this.escHtml(el.label)}${req}</label>` : '';
+      const name = el.fieldName || el.id;
+
+      switch (el.type) {
+        case 'heading': {
+          const sizes = { h1: 'text-xl font-bold', h2: 'text-lg font-bold', h3: 'text-base font-semibold' };
+          return `<div class="${sizes[el.level] || sizes.h2}">${this.escHtml(el.content)}</div>`;
+        }
+        case 'paragraph':
+          return `<div class="text-sm opacity-60 leading-relaxed prose prose-sm">${marked.parse(el.content || '')}</div>`;
+        case 'divider':
+          return '<div class="border-t border-base-300 my-1"></div>';
+        case 'text':
+        case 'email':
+        case 'number':
+        case 'date':
+          return `${label}<input class="input input-bordered input-sm w-full" type="${el.type}" name="${name}" placeholder="${this.escHtml(el.placeholder || '')}" ${el.required ? 'required' : ''} />`;
+        case 'textarea':
+          return `${label}<textarea class="textarea textarea-bordered textarea-sm w-full" name="${name}" rows="3" placeholder="${this.escHtml(el.placeholder || '')}" ${el.required ? 'required' : ''}></textarea>`;
+        case 'select':
+          return `${label}<select class="select select-bordered select-sm w-full" name="${name}" ${el.required ? 'required' : ''}><option value="" disabled selected>Select…</option>${(el.options || []).map(o => `<option>${this.escHtml(o)}</option>`).join('')}</select>`;
+        case 'radio':
+          return `${label}<div class="space-y-1">${(el.options || []).map(o => `<label class="flex items-center gap-2 text-[12px] cursor-pointer"><input type="radio" name="${name}" class="radio radio-sm radio-primary" value="${this.escHtml(o)}" ${el.required ? 'required' : ''} />${this.escHtml(o)}</label>`).join('')}</div>`;
+        case 'checkbox':
+          return `${label}<div class="space-y-1">${(el.options || []).map(o => `<label class="flex items-center gap-2 text-[12px] cursor-pointer"><input type="checkbox" name="${name}" class="checkbox checkbox-sm checkbox-primary" value="${this.escHtml(o)}" />${this.escHtml(o)}</label>`).join('')}</div>`;
+        case 'file':
+          return `${label}<input type="file" class="file-input file-input-bordered file-input-sm w-full" name="${name}" ${el.accept ? `accept="${el.accept}"` : ''} ${el.required ? 'required' : ''} />`;
+        case 'datatable': {
+          const cols = el.columns?.length ? el.columns : [];
+          if (!cols.length) return `${label}<div class="text-xs opacity-40">No columns defined</div>`;
+          return `${label}
+            <div class="border border-base-300 rounded-lg overflow-hidden">
+              <table class="table table-xs table-zebra w-full">
+                <thead><tr>${cols.map(c => `<th class="text-[10px]">${this.escHtml(c.label || c.name)}</th>`).join('')}</tr></thead>
+                <tbody>
+                  <tr>${cols.map(() => `<td class="text-[10px] opacity-40">Sample data</td>`).join('')}</tr>
+                </tbody>
+              </table>
+            </div>`;
+        }
+        default:
+          return `<div class="text-xs opacity-40">Unknown: ${el.type}</div>`;
+      }
+    },
+    // ── Property checks ──
+hasProperty(prop) {
+      if (!this.selectedElementData) return false;
+      const t = this.selectedElementData.type;
+      const inputTypes = ['text', 'email', 'number', 'textarea', 'select', 'radio', 'checkbox', 'file', 'date'];
+      if (prop === 'dataSource') return t === 'datatable';
+      if (prop === 'columns') return t === 'datatable';
+      if (prop === 'placeholder') return ['text', 'email', 'number', 'textarea', 'date'].includes(t);
+      if (prop === 'content') return ['heading', 'paragraph'].includes(t);
+      if (prop === 'fieldName') return inputTypes.includes(t);
+      if (prop === 'required') return inputTypes.includes(t);
+      if (prop === 'options') return ['select', 'radio', 'checkbox'].includes(t);
+      return false;
+    },
+
+    // ── Selection ──
+    selectElement(id) { this.selectedElement = id; },
+    updateElement() { /* Alpine reactivity handles it */ },
+
+    // ── Options ──
+    addOption() {
+      if (!this.selectedElementData?.options) return;
+      this.selectedElementData.options.push(`Option ${this.selectedElementData.options.length + 1}`);
+    },
+    removeOption(idx) {
+      if (!this.selectedElementData?.options) return;
+      if (this.selectedElementData.options.length <= 1) return;
+      this.selectedElementData.options.splice(idx, 1);
+    },
+
+    // ── Drag from palette ──
+    onPaletteDragStart(e, type) {
+      this.dragType = 'palette';
+      this.dragPayload = type;
+      e.dataTransfer.effectAllowed = 'copy';
+    },
+
+    // ── Drag to reorder ──
+    onElementDragStart(e, id) {
+      this.dragType = 'reorder';
+      this.dragPayload = id;
+      e.dataTransfer.effectAllowed = 'move';
+    },
+
+    onCanvasDragOver(e) {
+      this.isDraggingOver = true;
+      e.dataTransfer.dropEffect = this.dragType === 'palette' ? 'copy' : 'move';
+    },
+
+    onElementDragOver(e, targetId) {
+      this.isDraggingOver = false;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const midY = rect.top + rect.height / 2;
+      this.dropTarget = targetId;
+      this.dropPosition = e.clientY < midY ? 'before' : 'after';
+    },
+
+    clearDropTarget() { this.dropTarget = null; this.dropPosition = null; },
+
+    onCanvasDrop(e) {
+      this.isDraggingOver = false;
+      if (this.dragType === 'palette') {
+        const el = this.createElement(this.dragPayload);
+        if (this.dropTarget) {
+          const idx = this.elements.findIndex(e => e.id === this.dropTarget);
+          const insertIdx = this.dropPosition === 'after' ? idx + 1 : idx;
+          this.elements.splice(insertIdx, 0, el);
+        } else {
+          this.elements.push(el);
+        }
+        this.selectedElement = el.id;
+      }
+      this.clearDropTarget();
+      this.dragType = null;
+      this.dragPayload = null;
+    },
+
+    onElementDrop(e, targetId) {
+      if (this.dragType === 'palette') {
+        const el = this.createElement(this.dragPayload);
+        const idx = this.elements.findIndex(e => e.id === targetId);
+        const insertIdx = this.dropPosition === 'after' ? idx + 1 : idx;
+        this.elements.splice(insertIdx, 0, el);
+        this.selectedElement = el.id;
+      } else if (this.dragType === 'reorder' && this.dragPayload !== targetId) {
+        const fromIdx = this.elements.findIndex(e => e.id === this.dragPayload);
+        const [moved] = this.elements.splice(fromIdx, 1);
+        const toIdx = this.elements.findIndex(e => e.id === targetId);
+        const insertIdx = this.dropPosition === 'after' ? toIdx + 1 : toIdx;
+        this.elements.splice(insertIdx, 0, moved);
+      }
+      this.clearDropTarget();
+      this.dragType = null;
+      this.dragPayload = null;
+    },
+
+    // ── Actions ──
+    duplicateElement(id) {
+      const idx = this.elements.findIndex(e => e.id === id);
+      if (idx === -1) return;
+      const clone = JSON.parse(JSON.stringify(this.elements[idx]));
+      clone.id = `el_${++this._idCounter}_${Date.now()}`;
+      if (clone.fieldName) clone.fieldName = clone.fieldName + '_copy';
+      this.elements.splice(idx + 1, 0, clone);
+      this.selectedElement = clone.id;
+    },
+
+    removeElement(id) {
+      this.elements = this.elements.filter(e => e.id !== id);
+      if (this.selectedElement === id) this.selectedElement = null;
+    },
+
+    // ── Save / Load ──
+    async saveForm() {
+      if (!this.flowId || !this.nodeId) { toast('Missing flow or node ID', 'error'); return; }
+
+      try {
+        const res = await fetch(`/api/tenants/${this.$store.app.tenantId}/flows/${this.flowId}/nodes/${this.nodeId}/form`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ title: this.formTitle, description: this.formDescription, elements: this.elements }),
+        });
+        if (res.ok) toast('Form saved', 'success');
+        else toast('Failed to save', 'error');
+      } catch { toast('Could not reach server', 'error'); }
+    },
+    copyFormLink() {
+      const url = `${window.location.origin}/form/${this.nodeId}`;
+      navigator.clipboard.writeText(url).then(() => toast('Form link copied', 'success'));
+    },
+    async loadForm() {
+      if (!this.flowId || !this.nodeId) return;
+      try {
+        const res = await fetch(`/api/tenants/${this.$store.app.tenantId}/flows/${this.flowId}/nodes/${this.nodeId}/form`);
+        if (res.ok) {
+          const data = await res.json();
+          this.formTitle = data.title || '';
+          this.formDescription = data.description || '';
+          this.elements = data.elements || [];
+          this._idCounter = this.elements.length + 10;
+        }
+      } catch {}
+    },
+
+    // ── Helpers ──
+    escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); },
+
+  }));
+});
+</script>
+{% endraw %}
+
+
+</div>
+{% endblock%}

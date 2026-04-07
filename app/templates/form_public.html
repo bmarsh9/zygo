@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Form</title>
+
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.8/dist/cdn.min.js"></script>
+  <link rel="stylesheet" type="text/css" href="/static/css/output.css" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+  <script>
+    marked.setOptions({ breaks: true });
+    const renderer = new marked.Renderer();
+    renderer.link = function(href, title, text) {
+      return `<a href="${href}" target="_blank" rel="noopener" class="link link-primary"${title ? ` title="${title}"` : ''}>${text}</a>`;
+    };
+    marked.use({ renderer });
+  </script>
+  <style>
+    body { background: linear-gradient(135deg, oklch(var(--b2)) 0%, oklch(var(--b1)) 100%); }
+    .form-card { box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 12px 40px rgba(0,0,0,0.08); }
+    .fade-in { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  </style>
+</head>
+
+<body class="font-sans min-h-screen flex items-start justify-center p-6 md:p-12" x-data="publicForm">
+
+  <!-- Loading -->
+  <div x-show="loading" class="flex flex-col items-center justify-center py-20 opacity-40">
+    <span class="loading loading-spinner loading-md mb-3"></span>
+    <div class="text-sm">Loading form…</div>
+  </div>
+
+  <!-- Error -->
+  <div x-show="error && !loading" class="text-center py-20">
+    <div class="text-4xl mb-3">😕</div>
+    <div class="text-lg font-bold">Sorry. There is an issue.</div>
+    <div class="text-sm mt-1" x-text="error"></div>
+  </div>
+
+  <!-- Success -->
+  <div x-show="submitted && !loading" class="fade-in text-center py-20 max-w-md mx-auto">
+    <div class="text-5xl mb-4">✅</div>
+    <div class="text-xl font-bold mb-2" x-text="successTitle">Thank you!</div>
+    <div class="text-sm opacity-60" x-text="successMessage">Your response has been submitted.</div>
+  </div>
+
+  <!-- Form -->
+  <div x-show="!loading && !error && !submitted" class="w-full max-w-[640px] fade-in">
+    <div class="form-card bg-base-100 rounded-2xl overflow-hidden">
+
+      <!-- Header -->
+      <div class="bg-primary/5 border-b border-base-300 px-8 py-6">
+        <div class="flex items-center justify-between">
+          <h1 class="text-xl font-bold" x-text="formTitle || 'Untitled Form'"></h1>
+          <template x-if="totalSteps > 1">
+            <div class="text-[11px] font-semibold opacity-40" x-text="`Step ${stepIndex + 1} of ${totalSteps}`"></div>
+          </template>
+        </div>
+        <p class="text-sm opacity-50 mt-1" x-show="formDescription" x-text="formDescription"></p>
+        <template x-if="totalSteps > 1">
+          <div class="flex gap-1 mt-3">
+            <template x-for="i in totalSteps" :key="i">
+              <div class="h-1 flex-1 rounded-full transition-colors" :class="i <= stepIndex + 1 ? 'bg-primary' : 'bg-base-300'"></div>
+            </template>
+          </div>
+        </template>
+      </div>
+
+      <!-- Form body -->
+      <div class="px-8 py-6">
+        <template x-for="el in visibleElements" :key="el.id">
+          <div class="mb-5" x-html="renderFormElement(el)"></div>
+        </template>
+      </div>
+
+      <!-- Footer -->
+      <div class="px-8 py-5 border-t border-base-300 bg-base-50 flex justify-end">
+        <button class="btn btn-primary"
+                :class="submitting ? 'loading' : ''"
+                :disabled="submitting"
+                @click="submitForm()">
+          <span x-show="!submitting" x-text="stepIndex < totalSteps - 1 ? 'Next' : 'Submit'"></span>
+          <span x-show="!submitting && stepIndex < totalSteps - 1" class="ml-1">→</span>
+          <span x-show="submitting">Submitting…</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Powered by -->
+    <div class="text-center mt-4 opacity-30 text-[10px]">
+      Powered by Zygo
+    </div>
+  </div>
+
+{% raw %}
+<script>
+document.addEventListener('alpine:init', () => {
+  Alpine.data('publicForm', () => ({
+
+    loading: true,
+    error: null,
+    submitted: false,
+    submitting: false,
+    formTitle: '',
+    formDescription: '',
+    elements: [],
+    formData: {},
+    successTitle: 'Thank you!',
+    successMessage: 'Your response has been submitted successfully.',
+
+    nodeId: null,
+    sessionToken: null,
+    stepIndex: 0,
+    totalSteps: 1,
+
+    get visibleElements() {
+      return this.elements.filter(el => {
+        if (!el.hasCondition) return true;
+        const fieldVal = String(this.formData[el.conditionField] || '');
+        switch (el.conditionOp) {
+          case 'equals':     return fieldVal === el.conditionValue;
+          case 'not_equals': return fieldVal !== el.conditionValue;
+          case 'not_empty':  return fieldVal.trim() !== '';
+          case 'empty':      return fieldVal.trim() === '';
+          default: return true;
+        }
+      });
+    },
+
+    init() {
+      const parts = window.location.pathname.split('/').filter(Boolean);
+      if (parts.length >= 2 && parts[0] === 'form') {
+        this.nodeId = parts[1];
+      }
+      const params = new URLSearchParams(window.location.search);
+      this.sessionToken = params.get('session') || null;
+
+      this.loadForm();
+    },
+
+    async loadForm() {
+      try {
+        if (!this.nodeId) throw new Error('No form ID');
+
+        const params = new URLSearchParams(window.location.search);
+        const qs = params.toString() ? `?${params.toString()}` : '';
+        const res = await fetch(`/api/forms/${this.nodeId}${qs}`);
+
+        if (!res.ok) throw new Error('Form not found');
+        const data = await res.json();
+        if (!data.elements?.length) throw new Error('This form has no elements yet');
+
+        this.formTitle = data.title || '';
+        this.formDescription = data.description || '';
+        this.elements = data.elements;
+        document.title = this.formTitle || 'Form';
+
+        const urlParams = new URLSearchParams(window.location.search);
+        this.elements.forEach(el => {
+          if (el.fieldName) {
+            this.formData[el.fieldName] = urlParams.get(el.fieldName) || '';
+          }
+        });
+      } catch (e) {
+        this.error = e.message;
+      } finally {
+        this.loading = false;
+      }
+    },
+
+    renderFormElement(el) {
+      const name = el.fieldName || el.id;
+      const req = el.required ? '<span class="text-error ml-0.5">*</span>' : '';
+      const label = el.label ? `<label class="text-[13px] font-semibold mb-1.5 block">${this.esc(el.label)}${req}</label>` : '';
+      const model = el.fieldName ? ` x-model="formData['${el.fieldName}']"` : '';
+
+      switch (el.type) {
+        case 'heading': {
+          const sizes = { h1: 'text-xl font-bold', h2: 'text-lg font-bold', h3: 'text-base font-semibold' };
+          return `<div class="${sizes[el.level] || sizes.h2}">${this.esc(el.content)}</div>`;
+        }
+        case 'paragraph':
+          return `<div class="text-sm opacity-60 leading-relaxed prose prose-sm">${marked.parse(el.content || '')}</div>`;
+        case 'divider':
+          return '<div class="border-t border-base-300 my-2"></div>';
+        case 'text':
+        case 'email':
+        case 'number':
+        case 'date':
+          return `${label}<input class="input input-bordered input-sm w-full" type="${el.type}" name="${name}" placeholder="${this.esc(el.placeholder || '')}" ${el.required ? 'required' : ''}${model} />`;
+        case 'textarea':
+          return `${label}<textarea class="textarea textarea-bordered textarea-sm w-full" name="${name}" rows="3" placeholder="${this.esc(el.placeholder || '')}" ${el.required ? 'required' : ''}${model}></textarea>`;
+        case 'select':
+          return `${label}<select class="select select-bordered select-sm w-full" name="${name}" ${el.required ? 'required' : ''}${model}><option value="" disabled selected>Select…</option>${(el.options || []).map(o => `<option value="${this.esc(o)}">${this.esc(o)}</option>`).join('')}</select>`;
+        case 'radio':
+          return `${label}<div class="space-y-2">${(el.options || []).map(o =>
+            `<label class="flex items-center gap-2.5 text-[13px] cursor-pointer">
+              <input type="radio" name="${name}" class="radio radio-sm radio-primary" value="${this.esc(o)}" ${el.required ? 'required' : ''} @change="formData['${el.fieldName}'] = '${this.esc(o)}'" />
+              ${this.esc(o)}
+            </label>`
+          ).join('')}</div>`;
+        case 'checkbox':
+          return `${label}<div class="space-y-2">${(el.options || []).map(o =>
+            `<label class="flex items-center gap-2.5 text-[13px] cursor-pointer">
+              <input type="checkbox" class="checkbox checkbox-sm checkbox-primary" value="${this.esc(o)}" @change="toggleCheckbox('${el.fieldName}', '${this.esc(o)}', $event)" />
+              ${this.esc(o)}
+            </label>`
+          ).join('')}</div>`;
+        case 'file':
+          return `${label}<input type="file" class="file-input file-input-bordered file-input-sm w-full" name="${name}" ${el.accept ? `accept="${el.accept}"` : ''} ${el.required ? 'required' : ''} @change="handleFile('${el.fieldName}', $event)" />`;
+        case 'datatable': {
+          const cols = el.columns || [];
+          if (!cols.length) return `${label}<div class="text-xs opacity-40">No columns configured</div>`;
+          let rows = [];
+          if (el._resolvedData && Array.isArray(el._resolvedData)) {
+            rows = el._resolvedData;
+          }
+          return `${label}
+            <div class="border border-base-300 rounded-lg overflow-x-auto">
+              <table class="table table-xs table-zebra w-full">
+                <thead><tr>${cols.map(c => `<th class="text-[11px] font-semibold">${this.esc(c.label || c.name)}</th>`).join('')}</tr></thead>
+                <tbody>
+                  ${rows.length ? rows.map(row => `<tr>${cols.map(c => {
+                    let val = row[c.name];
+                    if (val === undefined || val === null) val = '';
+                    if (typeof val === 'object') val = JSON.stringify(val);
+                    return `<td class="text-[11px]">${this.esc(String(val))}</td>`;
+                  }).join('')}</tr>`).join('') : `<tr><td colspan="${cols.length}" class="text-center text-[11px] opacity-40 py-4">No data</td></tr>`}
+                </tbody>
+              </table>
+              ${rows.length ? `<div class="text-[9px] opacity-30 px-3 py-1.5 border-t border-base-300">${rows.length} row${rows.length !== 1 ? 's' : ''}</div>` : ''}
+            </div>`;
+        }
+        default:
+          return '';
+      }
+    },
+
+    toggleCheckbox(fieldName, value, event) {
+      let current = this.formData[fieldName];
+      if (!Array.isArray(current)) current = [];
+      if (event.target.checked) {
+        current.push(value);
+      } else {
+        current = current.filter(v => v !== value);
+      }
+      this.formData[fieldName] = current;
+    },
+
+    handleFile(fieldName, event) {
+      const file = event.target.files[0];
+      if (file) {
+        this.formData[fieldName] = { name: file.name, size: file.size, type: file.type };
+      }
+    },
+
+    async submitForm() {
+        const missing = [];
+        this.visibleElements.forEach(el => {
+            if (!el.required || !el.fieldName) return;
+            const val = this.formData[el.fieldName];
+            if (!val || (typeof val === 'string' && !val.trim()) || (Array.isArray(val) && !val.length)) {
+                missing.push(el.label || el.fieldName);
+            }
+        });
+
+        if (missing.length) {
+            alert(`Please fill in: ${missing.join(', ')}`);
+            return;
+        }
+
+        this.submitting = true;
+
+        try {
+            const res = await fetch(`/api/forms/${this.nodeId}/submit`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    form_data: this.formData,
+                    submitted_at: new Date().toISOString(),
+                    session_token: this.sessionToken,
+                    session_data: Object.fromEntries(
+                        [...new URLSearchParams(window.location.search)].filter(([k]) => k !== 'session' && k !== 'form_password')
+                    ),
+                }),
+            });
+            const data = await res.json();
+
+            if (!res.ok) {
+                if (res.status === 429) {
+                    alert('Too many submissions. Please wait a moment and try again.');
+                } else {
+                    alert(data.error || 'Submission failed. Please try again.');
+                }
+                return;
+            }
+
+            // If we got a job_id, poll for result
+            if (data.job_id) {
+                await this.pollFormJob(data.job_id);
+                return;
+            }
+
+            // Legacy synchronous response
+            if (data.redirect) {
+                window.location.href = data.redirect;
+                return;
+            }
+            this.submitted = true;
+
+        } catch {
+            alert('Network error. Please try again.');
+        } finally {
+            this.submitting = false;
+        }
+    },
+
+    async pollFormJob(jobId) {
+        const maxAttempts = 60;
+        const interval = 1000;
+
+        for (let i = 0; i < maxAttempts; i++) {
+            try {
+                const res = await fetch(`/api/form-jobs/${jobId}`);
+                const data = await res.json();
+
+                if (data.status === 'finished' && data.result) {
+                    const result = data.result;
+                    if (result.redirect) {
+                        window.location.href = result.redirect;
+                        return;
+                    }
+                    this.submitted = true;
+                    this.submitting = false;
+                    return;
+                } else if (data.status === 'failed') {
+                    alert(data.error || 'Submission failed. Please try again.');
+                    this.submitting = false;
+                    return;
+                }
+                // Still processing — wait and try again
+                await new Promise(r => setTimeout(r, interval));
+            } catch {
+                await new Promise(r => setTimeout(r, interval));
+            }
+        }
+
+        alert('Submission is taking longer than expected. Please refresh and check if your response was recorded.');
+        this.submitting = false;
+    },
+
+    esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); },
+
+  }));
+});
+</script>
+{% endraw %}
+
+</body>
+</html>
