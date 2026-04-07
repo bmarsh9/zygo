@@ -35,6 +35,15 @@
               <input x-model="payload.display_name" type="text" class="grow" placeholder="Display Name" />
             </label>
           </div>
+          {% if config.SELF_REGISTRATION_SECRET %}
+          <div class="mb-4">
+              <label class="text-sm block mb-1">Registration Code</label>
+              <label class="input input-sm input-bordered flex items-center gap-2">
+                  <i class="ti ti-key"></i>
+                  <input x-model="payload.registration_secret" type="password" class="grow" placeholder="Code provided by your admin" />
+              </label>
+          </div>
+          {% endif %}
           <div class="mb-4">
             <div class="flex justify-between">
               <label class="text-sm block mb-1">
@@ -186,7 +195,8 @@
               display_name: "",
               password: "",
               password2: "",
-              tenant: ""
+              tenant: "",
+              registration_secret: ""
           },
           userId: null,
           userName: "",
@@ -196,6 +206,8 @@
           emailSent: false,
           confirmationCode: "",
           canResend: true,
+          requiresSecret: {{ 'true' if config.SELF_REGISTRATION_SECRET else 'false' }},
+
 
           // ── Computed ──
           get accountReady() {
@@ -203,6 +215,7 @@
               if (!p.email || !p.email.includes("@")) return false
               if (!p.display_name) return false
               if (!p.password || p.password !== p.password2 || p.password.length < 12) return false
+              if (this.requiresSecret && !p.registration_secret) return false
               return true
           },
           get tenantReady() {
@@ -274,7 +287,8 @@
                       email: this.payload.email,
                       display_name: this.payload.display_name,
                       password: this.payload.password,
-                      password2: this.payload.password2
+                      password2: this.payload.password2,
+                      registration_secret: this.payload.registration_secret || ""
                   }
               )
           },

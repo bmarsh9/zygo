@@ -298,6 +298,13 @@ def api_register():
     if current_app.is_self_registration_enabled is not True:
         return jsonify({"message": "Self-service registration is disabled"}), 403
 
+    # Registration secret check
+    reg_secret = current_app.config.get("SELF_REGISTRATION_SECRET")
+    if reg_secret:
+        data_peek = request.get_json(silent=True) or {}
+        if data_peek.get("registration_secret", "").strip() != reg_secret:
+            return jsonify({"message": "Invalid registration code"}), 403
+
     # If already authenticated, return current state instead of allowing
     # re-registration or login-as-another-user through this endpoint
     if current_user.is_authenticated:

@@ -16,7 +16,7 @@
         {% block head %}{% endblock %}
         {{ alpine_store() }}
     </head>
-    <body x-data="{ showHelpModal: false, helpForm: { email: '{{ current_user.email | default("", true) }}', message: '' }, helpSubmitting: false }">
+    <body x-data="{ showHelpModal: false, showEnvModal: false, helpForm: { email: '{{ current_user.email | default("", true) }}', message: '' }, helpSubmitting: false }">
 
         {% block navbar %}
         <nav class="flex items-center px-6 h-14 border-b border-base-200 bg-base-100 gap-4">
@@ -132,6 +132,14 @@
                                     Help & Feedback
                                 </button>
                             </li>
+                            <li>
+                                <button @click="showEnvModal = true" class="flex items-center gap-2">
+                                    <svg xmlns="http://www.w3.org/2000/svg" class="w-4 h-4 opacity-60" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                                        <path stroke-linecap="round" stroke-linejoin="round" d="M11.42 15.17l-5.384 3.077a1.125 1.125 0 01-1.633-1.035V6.788a1.125 1.125 0 011.633-1.035l5.384 3.077m0 6.34V8.83m0 6.34l5.384 3.077a1.125 1.125 0 001.633-1.035V6.788a1.125 1.125 0 00-1.633-1.035L11.42 8.83" />
+                                    </svg>
+                                    Environment
+                                </button>
+                            </li>
                             <li class="mt-1 border-t border-base-200 pt-1">
                                 <button @click="$store.app.refreshSession()">
                                     Refresh Session
@@ -140,6 +148,7 @@
                             <li class="mt-1 border-t border-base-200 pt-1">
                                 <button @click="$store.app.logout()" class="text-error">Logout</button>
                             </li>
+
                         </ul>
                     </div>
                 </div>
@@ -233,5 +242,33 @@
                 </script>
             {% endif %}
         {% endwith %}
+        <!-- Environment Variables Modal -->
+        <dialog class="modal" :class="showEnvModal ? 'modal-open' : ''">
+            <div class="modal-box max-w-sm">
+                <div class="flex items-center justify-between mb-4">
+                    <div class="font-bold text-sm">Environment</div>
+                    <button class="btn btn-ghost btn-xs btn-square" @click="showEnvModal = false">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                </div>
+                <div class="space-y-2 font-mono text-xs">
+                    <div class="flex justify-between py-1 border-b border-base-200">
+                        <span class="opacity-50">VERSION</span>
+                        <span>{{ config.VERSION }}</span>
+                    </div>
+                    {% for var in config.DEBUG_ENV_VARS %}
+                    <div class="flex justify-between py-1 border-b border-base-200">
+                        <span class="opacity-50">{{ var }}</span>
+                        <span>{{ config[var] }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+                <div class="modal-action">
+                    <button class="btn btn-ghost btn-sm" @click="showEnvModal = false">Close</button>
+                </div>
+            </div>
+            <form method="dialog" class="modal-backdrop" @click="showEnvModal = false"><button>close</button></form>
+        </dialog>
+
     </body>
 </html>
