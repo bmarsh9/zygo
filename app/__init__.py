@@ -267,8 +267,8 @@ def set_config_options(app):
     app.is_email_configured = False
     app.is_self_registration_enabled = False
 
-    if app.config.get("EMAIL_PROVIDER") == "mailjet":
-        if app.config.get("MAILJET_API_KEY") and app.config.get("MAILJET_API_SECRET"):
+    if app.config.get("EMAIL_PROVIDER") == "sender":
+        if app.config.get("SENDER_API_TOKEN"):
             app.is_email_configured = True
     else:
         if app.config.get("MAIL_USERNAME") and app.config.get("MAIL_PASSWORD"):

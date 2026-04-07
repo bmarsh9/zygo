@@ -6,63 +6,59 @@ import smtplib
 import requests
 
 
-def _send_mailjet(subject, sender, recipients, text_body, html_body):
-    """Send email via Mailjet API v3.1."""
-    api_key = current_app.config["MAILJET_API_KEY"]
-    api_secret = current_app.config["MAILJET_API_SECRET"]
+def _send_sender(subject, sender, recipients, text_body, html_body):
+    """Send email via Sender.net API v2."""
+    api_token = current_app.config["SENDER_API_TOKEN"]
+    app_name = current_app.config.get("APP_NAME", "")
 
-    messages = []
+    results = []
     for recipient in recipients:
-        msg = {
-            "From": {"Email": sender, "Name": current_app.config.get("APP_NAME")},
-            "To": [{"Email": recipient}],
-            "Subject": subject,
+        payload = {
+            "from": {"email": sender, "name": app_name},
+            "to": {"email": recipient},
+            "subject": subject,
         }
-        if text_body:
-            msg["TextPart"] = text_body
         if html_body:
-            msg["HTMLPart"] = html_body
-        messages.append(msg)
+            payload["html"] = html_body
+        if text_body:
+            payload["text"] = text_body
 
-    try:
-        resp = requests.post(
-            "https://api.mailjet.com/v3.1/send",
-            auth=(api_key, api_secret),
-            json={"Messages": messages},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
+        try:
+            resp = requests.post(
+                "https://api.sender.net/v2/message/send",
+                headers={
+                    "Authorization": f"Bearer {api_token}",
+                    "Content-Type": "application/json",
+                    "Accept": "application/json",
+                },
+                json=payload,
+                timeout=15,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            current_app.logger.info(f"Sender: sent '{subject}' to {recipient}")
+            results.append(data)
+        except requests.exceptions.HTTPError:
+            current_app.logger.error(
+                f"Sender: HTTP {resp.status_code} for '{subject}' to {recipient} — {resp.text}"
+            )
+            raise
+        except requests.exceptions.RequestException as e:
+            current_app.logger.error(
+                f"Sender: request failed for '{subject}' to {recipient} — {e}"
+            )
+            raise
 
-        for msg_result in data.get("Messages", []):
-            status = msg_result.get("Status")
-            to = msg_result.get("To", [{}])[0].get("Email", "unknown")
-            if status == "success":
-                current_app.logger.info(f"Mailjet: sent '{subject}' to {to}")
-            else:
-                current_app.logger.warning(
-                    f"Mailjet: status '{status}' for '{subject}' to {to} — {msg_result}"
-                )
+    return results
 
-        return data
-    except requests.exceptions.HTTPError:
-        current_app.logger.error(
-            f"Mailjet: HTTP {resp.status_code} for '{subject}' to {recipients} — {resp.text}"
-        )
-        raise
-    except requests.exceptions.RequestException as e:
-        current_app.logger.error(
-            f"Mailjet: request failed for '{subject}' to {recipients} — {e}"
-        )
-        raise
 
-def _send_mailjet_async(app, subject, sender, recipients, text_body, html_body):
+def _send_sender_async(app, subject, sender, recipients, text_body, html_body):
     with app.app_context():
         try:
-            _send_mailjet(subject, sender, recipients, text_body, html_body)
-            current_app.logger.debug("Mailjet email sent successfully")
+            _send_sender(subject, sender, recipients, text_body, html_body)
+            current_app.logger.debug("Sender email sent successfully")
         except Exception as e:
-            current_app.logger.error(f"Failed to send Mailjet email: {e}")
+            current_app.logger.error(f"Failed to send Sender email: {e}")
 
 
 def send_async_email(app, msg):
@@ -82,19 +78,19 @@ def send_email(subject, recipients, text_body, html_body, async_send=True):
         current_app.logger.warning("No email sender configured")
         return False
 
-    if provider == "mailjet":
+    if provider == "sender":
         try:
             if async_send:
                 Thread(
-                    target=_send_mailjet_async,
+                    target=_send_sender_async,
                     args=(current_app._get_current_object(), subject, sender, recipients, text_body, html_body)
                 ).start()
             else:
-                _send_mailjet(subject, sender, recipients, text_body, html_body)
-                current_app.logger.debug("Mailjet email sent successfully (sync)")
+                _send_sender(subject, sender, recipients, text_body, html_body)
+                current_app.logger.debug("Sender email sent successfully (sync)")
                 return True
         except Exception as e:
-            current_app.logger.error(f"Failed to send Mailjet email: {e}")
+            current_app.logger.error(f"Failed to send Sender email: {e}")
             return False
     else:
         msg = Message(subject, sender=sender, recipients=recipients)
@@ -113,6 +109,7 @@ def send_email(subject, recipients, text_body, html_body, async_send=True):
         except smtplib.SMTPException as e:
             current_app.logger.error(f"Failed to send email (sync): {e}")
             return False
+
 
 def send_template_email(subject, recipients, content, button_link=None, button_label="View", help_link=None, **kwargs):
     """Send an email using the standard basic_template."""
