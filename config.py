@@ -100,9 +100,9 @@ class Config:
     FERNET = Fernet(FERNET_KEY.encode() if isinstance(FERNET_KEY, str) else FERNET_KEY)
 
     # Expose certain env vars in front end (DO NOT PLACE SENSITIVE VARS)
-    # Use csv (e.g. storage_method,gcs_bucket)
+    # Use csv (e.g. HOST_NAME, another_var)
     DEBUG_ENV_VARS = (
-        os.environ.get("DEBUG_ENV_VARS", "STORAGE_METHOD").upper().split(",")
+        os.environ.get("DEBUG_ENV_VARS", "HOST_NAME").upper().split(",")
     )
 
     @staticmethod
