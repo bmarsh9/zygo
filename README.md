@@ -22,7 +22,7 @@ Zygo is a multi-tenant workflow automation platform specifically for InfoSec (Se
 1. Start the app with Docker
 ```commandline
 git clone https://github.com/bmarsh9/zygo.git && cd zygo
-sudo docker-compose up -d --build
+docker compose up -d --build
 ```
 
 2. Visit http://localhost:8000
