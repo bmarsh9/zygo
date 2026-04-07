@@ -26,7 +26,7 @@ sudo docker-compose up -d --build
 ```
 
 2. Visit http://localhost:8000
-   2. Email: `admin@example.com`
-   3. Password: `admin1234567`
 
-3. [Create your first flow](https://darkbanner.mintlify.app/quickstart)
+3. Use `admin@example.com` and `admin1234567` to login as super user
+
+4. [Create your first flow!](https://darkbanner.mintlify.app/quickstart)
