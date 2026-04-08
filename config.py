@@ -94,7 +94,7 @@ class Config:
     MICROSOFT_CLIENT_ID = os.environ.get("MICROSOFT_CLIENT_ID")
     MICROSOFT_CLIENT_SECRET = os.environ.get("MICROSOFT_CLIENT_SECRET")
 
-    FERNET_KEY = os.environ.get("FERNET_KEY", "fernet-secret-change-me")
+    FERNET_KEY = os.environ.get("FERNET_KEY", "ZmDfcTF7_60GrrY167zsiPd67pEvs0aGOv2oasOM1Pg=")
     FERNET = Fernet(FERNET_KEY.encode() if isinstance(FERNET_KEY, str) else FERNET_KEY)
 
     # Expose certain env vars in front end (DO NOT PLACE SENSITIVE VARS)
