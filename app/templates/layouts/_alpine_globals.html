@@ -125,6 +125,7 @@ document.addEventListener('alpine:init', () => {
                 : this.tenants.find(t => t.id === tenantOrId)
 
             if (!tenant) { toast('Tenant not found', 'error'); return }
+            if (tenant.id === this.tenantId) return
 
             toast(`Switching to ${tenant.name}…`, 'info')
             try {

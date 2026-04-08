@@ -78,6 +78,7 @@ def get_session():
 def set_session(tenant_id):
     tenant = Authorizer(current_user).switch_tenant(tenant_id)
     set_session_data(current_user, tenant)
+    session.modified = True
     return jsonify({"message": "ok"})
 
 
