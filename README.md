@@ -1,6 +1,6 @@
 # <img src="app/static/img/logo.png" alt="Zygo" height="26"> Zygo
 
-Zygo is a multi-tenant workflow automation platform specifically for InfoSec (Security) and IT teams.
+Zygo is a multi-tenant workflow automation platform for InfoSec (Security) and IT teams.
 
 ![Zygo Flow Canvas](img/canvas.png)
 
@@ -19,14 +19,30 @@ Zygo is a multi-tenant workflow automation platform specifically for InfoSec (Se
 
 ## Quick Start
 
-1. Start the app with Docker
+1. Clone the repository
 ```commandline
 git clone https://github.com/bmarsh9/zygo.git && cd zygo
+```
+
+2. Create `.env` file in the repo. This is used by the docker compose.
+```commandline
+#.env file
+ENABLE_SELF_REGISTRATION=<true or false>
+MAIL_USERNAME=<insert SMTP email>
+MAIL_PASSWORD=<insert SMTP password for email>
+HOST_NAME=<insert fqdn with scheme such as https://your-app.com>
+HELP_EMAIL=<insert help email>
+INTERNAL_API_SECRET=<insert random, 20+ string>
+FERNET_KEY=<generate key using: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())">
+```
+
+3. Start the app with Docker compose
+```commandline
 docker compose up -d --build
 ```
 
-2. Visit http://localhost:8000
+4. Visit http://localhost:8000
 
-3. Use `admin@example.com` and `admin1234567` to login as super user
+5. Use `admin@example.com` and `admin1234567` to login as super user
 
-4. [Create your first flow!](https://darkbanner.mintlify.app/quickstart)
+6. [Create your first flow!](https://darkbanner.mintlify.app/quickstart)
