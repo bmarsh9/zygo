@@ -1,6 +1,7 @@
 from functools import wraps
 from flask import current_app, request, jsonify, redirect, url_for, flash, session, abort, g
 from flask_login import current_user, login_user, logout_user
+import ipaddress
 
 
 # ── Auth mode constants ───────────────────────────────────────────────────────
@@ -161,9 +162,19 @@ def internal_api_required(f):
     """Verify requests come from internal workers via shared secret."""
     @wraps(f)
     def decorated(*args, **kwargs):
+        # Check source IP is private
+        try:
+            ip = ipaddress.ip_address(request.remote_addr)
+            if not ip.is_private:
+                abort(403, "Unauthorized internal request")
+        except ValueError:
+            abort(403, "Unauthorized internal request")
+
+        # Check shared secret
         token = request.headers.get("X-Internal-Secret", "")
         expected = current_app.config.get("INTERNAL_API_SECRET", "")
         if not token or token != expected:
             abort(403, "Unauthorized internal request")
+
         return f(*args, **kwargs)
     return decorated
