@@ -92,13 +92,7 @@ document.addEventListener('alpine:init', () => {
         },
         // ── boot ─────────────────────────────────────────────────────────
         async init() {
-            if (!this.isAuthenticated) {
-                console.log("Not authenticated, skipping init")
-                return
-            }
-
-            localStorage.removeItem('selectedTenantId')
-            localStorage.removeItem('selectedTenant')
+            if (!this.isAuthenticated) return
 
             if (!this.tenants.length) {
                 await this._loadTenants()
@@ -107,12 +101,6 @@ document.addEventListener('alpine:init', () => {
             if (this.tenantId && this.tenants.length) {
                 const match = this.tenants.find(t => t.id === this.tenantId)
                 this.selectedTenant = match ?? this.tenants[0] ?? null
-            }
-
-            // Auto-select first tenant if none is set
-            if (!this.tenantId && this.tenants.length) {
-                await this.changeTenant(this.tenants[0])
-                return // changeTenant reloads the page
             }
         },
 
@@ -134,8 +122,9 @@ document.addEventListener('alpine:init', () => {
                     headers: { 'Content-Type': 'application/json' },
                 })
                 if (!res.ok) throw new Error()
-                // Reload so Jinja re-renders store with fresh session values
-                window.location.reload()
+                // Force a full navigation instead of reload — this gives the browser
+                // time to process the Set-Cookie header before the new page request
+                window.location.href = window.location.href
             } catch {
                 toast('Failed to switch tenant', 'error')
             }
