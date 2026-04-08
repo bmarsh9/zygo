@@ -267,12 +267,8 @@ def set_config_options(app):
     app.is_email_configured = False
     app.is_self_registration_enabled = False
 
-    if app.config.get("EMAIL_PROVIDER") == "sender":
-        if app.config.get("SENDER_API_TOKEN"):
-            app.is_email_configured = True
-    else:
-        if app.config.get("MAIL_USERNAME") and app.config.get("MAIL_PASSWORD"):
-            app.is_email_configured = True
+    if app.config.get("MAIL_USERNAME") and app.config.get("MAIL_PASSWORD"):
+        app.is_email_configured = True
 
     if app.is_email_configured and app.config.get("ENABLE_SELF_REGISTRATION"):
         app.is_self_registration_enabled = True

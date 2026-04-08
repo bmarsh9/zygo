@@ -68,8 +68,7 @@ class Config:
     MAIL_USERNAME = os.environ.get("MAIL_USERNAME")
     MAIL_DEFAULT_SENDER = os.environ.get("MAIL_DEFAULT_SENDER", DEFAULT_EMAIL)
     MAIL_PASSWORD = os.environ.get("MAIL_PASSWORD")
-    SENDER_API_TOKEN = os.environ.get("SENDER_API_TOKEN", "")
-    EMAIL_PROVIDER = os.environ.get("EMAIL_PROVIDER", "smtp")  # "smtp" or "sender"
+    EMAIL_PROVIDER = os.environ.get("EMAIL_PROVIDER", "smtp")
 
     INTERNAL_API_SECRET = os.environ.get("INTERNAL_API_SECRET", "internal-secret-change-me")
     PERMANENT_SESSION_LIFETIME = timedelta(hours=int(os.environ.get("PERMANENT_SESSION_LIFETIME", 10)))
