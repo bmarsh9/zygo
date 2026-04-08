@@ -95,7 +95,6 @@ document.addEventListener('alpine:init', () => {
             if (!this.isAuthenticated) return
             console.log('init tenantId:', JSON.stringify(this.tenantId), 'tenants:', JSON.stringify(this.tenants))
 
-
             if (!this.tenants.length) {
                 await this._loadTenants()
             }

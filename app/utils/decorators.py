@@ -21,7 +21,7 @@ def set_session_data(user, tenant=None):
     session['user_super'] = user.super
     session['tenants']    = [{'id': t.id, 'name': t.name} for t in user.get_tenants()]
 
-    if tenant and tenant.has_member(user):
+    if tenant and (tenant.has_member(user) or user.super):
         session['tenant_id']    = tenant.id
         session['tenant_name']  = tenant.name
         session['tenant_roles'] = tenant.get_roles_for_member(user)
