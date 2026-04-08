@@ -3,6 +3,28 @@
 {% block page_header %}{% endblock %}
 {% block page_content %}
 <div x-data="homePage()" class="max-w-5xl mx-auto">
+    {% if config.get('INTERNAL_API_SECRET') == 'internal-secret-change-me' %}
+    <div class="alert alert-error shadow-sm text-white mb-4">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+        </svg>
+        <div>
+            <div class="text-sm font-bold">Default internal secret detected</div>
+            <div class="text-xs opacity-80">The internal secret used by Zygo components to authenticate each other has not been changed. Backend secrets are at significant risk of exposure. Set the <code class="font-mono bg-error/20 px-1 rounded">INTERNAL_API_SECRET</code> environment variable to a randomly generated long secret.</div>
+        </div>
+    </div>
+    {% endif %}
+    {% if config.get('FERNET_KEY') == 'fernet-secret-change-me' %}
+    <div class="alert alert-error text-white shadow-sm mb-4">
+        <svg xmlns="http://www.w3.org/2000/svg" class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126ZM12 15.75h.007v.008H12v-.008Z" />
+        </svg>
+        <div>
+            <div class="text-sm font-bold">Default encryption key detected</div>
+            <div class="text-xs opacity-80">The Fernet key used to encrypt sensitive data has not been changed. Stored secrets such as credentials and API keys are at significant risk of exposure. Set the <code class="font-mono bg-error/20 px-1 rounded">FERNET_KEY</code> environment variable to a key generated with <code class="font-mono bg-error/20 px-1 rounded">python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"</code></div>
+        </div>
+    </div>
+    {% endif %}
 
     <!-- Welcome Modal (first login) -->
     <div x-show="showWelcome" x-transition:enter="transition ease-out duration-200" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-150" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0" class="modal modal-open" x-cloak>
