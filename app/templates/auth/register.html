@@ -300,14 +300,23 @@
 
               request("POST", "/api/tenants",
                   (data) => {
-                      this.isSubmitting = false
-                      toast("Workspace created!", "success")
+                      // Set the new tenant in the server session
+                      request("PUT", `/api/session/${data.id}`,
+                          () => {
+                              this.isSubmitting = false
+                              toast("Workspace created!", "success")
 
-                      if (this.requiresEmailVerification) {
-                          this.currentStep = 3
-                      } else {
-                          this.finish()
-                      }
+                              if (this.requiresEmailVerification) {
+                                  this.currentStep = 3
+                              } else {
+                                  this.finish()
+                              }
+                          },
+                          (error) => {
+                              this.isSubmitting = false
+                              toast(error.message, "error")
+                          }
+                      )
                   },
                   (error) => {
                       this.isSubmitting = false

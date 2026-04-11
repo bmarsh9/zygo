@@ -329,12 +329,8 @@ def api_register():
         return jsonify({"message": "Valid email is required"}), 400
     if not display_name:
         return jsonify({"message": "Display name is required"}), 400
-    if not password:
-        return jsonify({"message": "Password is required"}), 400
-    if password != password2:
-        return jsonify({"message": "Passwords do not match"}), 400
     if not misc.perform_pwd_checks(password, password_two=password2):
-        return jsonify({"message": "Password does not meet requirements (minimum 12 characters)"}), 400
+        return jsonify({"message": "Invalid password"}), 400
 
     # Check if user already exists — follow login path
     if user := User.find_by_email(email):
