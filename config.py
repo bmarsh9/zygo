@@ -81,6 +81,9 @@ class Config:
     ENABLE_SELF_REGISTRATION = (
         os.environ.get("ENABLE_SELF_REGISTRATION", "false").lower() == "true"
     )
+    AUTO_CONFIRMATION = (
+        os.environ.get("AUTO_CONFIRMATION", "false").lower() == "true"
+    )
     SELF_REGISTRATION_SECRET = os.environ.get("SELF_REGISTRATION_SECRET")
 
     ENABLE_GOOGLE_AUTH = os.environ.get("ENABLE_GOOGLE_AUTH", "false").lower() == "true"

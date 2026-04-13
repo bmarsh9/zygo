@@ -463,7 +463,7 @@ class User(db.Model, UserMixin):
         User.validate_registration(email, password, password)
 
         email_confirmed_at = None
-        if confirmed:
+        if confirmed or current_app.config["AUTO_CONFIRMATION"]:
             email_confirmed_at = datetime.utcnow()
 
         new_user = User(
