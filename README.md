@@ -2,6 +2,8 @@
 
 Zygo is a multi-tenant workflow automation platform for InfoSec (Security) and IT teams.
 
+🏠 Interested in contacting me? Please join our [discord](https://discord.gg/9unhWAqadg)
+
 ![Zygo Flow Canvas](img/canvas.png)
 
 
