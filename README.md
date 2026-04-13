@@ -26,7 +26,7 @@ Zygo is a multi-tenant workflow automation platform for InfoSec (Security) and I
 git clone https://github.com/bmarsh9/zygo.git && cd zygo
 ```
 
-2. Create `.env` file in the repo. This is used by the docker compose.
+2. (Optional) Create `.env` file in the repo. This is used by the docker compose.
 ```commandline
 #.env file
 ENABLE_SELF_REGISTRATION=<true or false>
